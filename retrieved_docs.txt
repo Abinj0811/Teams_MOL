@@ -1,0 +1,1186 @@
+
+
+Question: Hello, how can I assist you today?
+Context:
+Doc 1 (Score 0.233):
+| Unit       | Entry Staff / Assistant         | -  Assistant                                                                                                                           | Other Staff is to execute the duties under the supervision of the Leader.                                                                                                                                   |
+
+Doc 2 (Score 0.189):
+| Department | Senior Specialist               | -  Senior Specialist                                                                                                                   | This role supports the Head of Department, with delegated authority to perform  departmental duties and facilitate operational excellence .                                                                 |
+| Unit       | Unit Lead                       | -  Leader -  Port Captain                                                                                                              | This title is designated for individuals leading a unit, focusing on specific operational  objectives.                                                                                                      |
+
+Doc 3 (Score 0.183):
+|                     | (1)                                                                                                                                                                                                               | Investment ................................ ................................ ................................ ................................ ................................ ................................ ............................... 10     |
+|                     | (2)                                                                                                                                                                                                               | Make Payment on Behalf of Others ................................ ................................ ................................ ................................ ................................ ........................ 11                       |
+
+Doc 4 (Score 0.179):
+| SN       |                                                        |                        | MOL                 | BDM Al              | A4                  | Co-Mgmt Dept | MI       | A}       |          | Dept     |          |          |          |          |          |
+|          | Providing guarantee acquisition disposal of securitie: |                        |                     |                     |                     |              |          |          |          |          |          |          |          |          |          |
+|          | Providing guarantee acquisition disposal of securitie: | Less than JP#}Omillicn |                     |                     |                     |              |          |          |          |          |          |          |          |          |          |
+
+Doc 5 (Score 0.178):
+|  10 | GROUP ACCOUNTING & FINANCE DEPARTMENT ..........................................................................................................................................  20                         |
+|  11 | GENERAL ADMINISTRATION DEPARTMENT ...................................................................................................................................................  22                    |
+|  12 | FLEET STRATEGY DEPARTMENT  ....................................................................................................................................................................  22          |
+|  13 | BUSINESS STRATEGY DEPARTMENT  .............................................................................................................................................................  23              |
+
+
+Question: Who has the authority to approve acquisitions of fixed assets under USD 50,000?
+Context:
+Doc 1 (Score 0.669):
+- **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+- **Acquisition, disposal of IT related fixed assets a) Equipment and fixtures b) Intellectual property c) Software (including development cost) (6) d) Other IT assets**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A1; Deliberation: MM; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+    - **US$25,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **US$10,000 or more** — Authorised Approvers: A3.
+    - **Less than US$10,000** — Authorised Approvers: A4; Review: -.
+
+Doc 2 (Score 0.606):
+- **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 3 (Score 0.573):
+- **Providing guarantee, acquisition/ disposal of securities**
+    - **JP¥30million or more (2)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Less than JP¥30million** — Authorised Approvers: A2; Report: MM; Review: GPM.
+- **Acquisition (3), disposal (4) of fixed assets (Excluding IT related assets) a) Equipment and fixtures b) Golf course membership c) Intellectual property d) Other assets - Excluding acquisition/ disposal of vessel(s) - Excluding capital expenditure of vessel(s)**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$500,000 or more (5)** — Authorised Approvers: MOL, A2; Report: MM; Review: GPM.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 4 (Score 0.510):
+- **Less than US$25,000** — Authorised Approvers: A4.
+- **General Average a) Declaration of General Average b) Settlement of General Average**
+    - **Regardless of amount (8)** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 5 (Score 0.504):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(2) Make Payment on Behalf of Others
+(3) Lease Contract
+- Conclusion of a lease - in contract with a period of 5 years or more
+- Conclusion of a lease - out contract with a period of 3 years or more
+
+## Page 11 - Authority Table 2
+
+- **Leasing an estate (excluding vessel) (7) Leasing an asset (excluding IT-related intellectual asset, system) (7)**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+
+Question: Who is responsible for approving IT-related fixed asset acquisitions that exceed USD 50,000?
+Context:
+Doc 1 (Score 0.685):
+- **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+- **Acquisition, disposal of IT related fixed assets a) Equipment and fixtures b) Intellectual property c) Software (including development cost) (6) d) Other IT assets**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A1; Deliberation: MM; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+    - **US$25,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **US$10,000 or more** — Authorised Approvers: A3.
+    - **Less than US$10,000** — Authorised Approvers: A4; Review: -.
+
+Doc 2 (Score 0.559):
+- **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 3 (Score 0.547):
+- **IT-related service agreements**
+- **Consultancy Agreement Advisory Contract Education and training cost Research fee/ Purchasing statistical data (11) Other IT-related Service Contract**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+    - **US$25,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **US$10,000 or more** — Authorised Approvers: A3.
+    - **Less than US$10,000** — Authorised Approvers: A4.
+- **Business Process Outsourcing Agreement**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+
+Doc 4 (Score 0.545):
+- **Providing guarantee, acquisition/ disposal of securities**
+    - **JP¥30million or more (2)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Less than JP¥30million** — Authorised Approvers: A2; Report: MM; Review: GPM.
+- **Acquisition (3), disposal (4) of fixed assets (Excluding IT related assets) a) Equipment and fixtures b) Golf course membership c) Intellectual property d) Other assets - Excluding acquisition/ disposal of vessel(s) - Excluding capital expenditure of vessel(s)**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$500,000 or more (5)** — Authorised Approvers: MOL, A2; Report: MM; Review: GPM.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 5 (Score 0.518):
+## Page 12 - Authority Table 1
+
+- **Leasing an asset (IT-related intellectual asset, system) (7)**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$200,000 or more** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **Less than US$200,000** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$10,000** — Authorised Approvers: A4.
+
+### Notes and Additional Information
+- - Based on total leasing cost throughout the contract period. - Deposit is not taken into account. 7 Subjected to MOL's approval for cases as follows: (excluding office equipment, office lease contracts) - Conclusion of a lease - in contract with a period of 5 years or more - Conclusion of a lease - out contract with a period of 3 years or more
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(4) Claim Settlement
+8 Amount of payment before insurance coverage.
+
+## Page 12 - Authority Table 2
+
+
+Question: Who has the authority to approve write-offs for amounts under USD 25,000?
+Context:
+Doc 1 (Score 0.601):
+- **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 2 (Score 0.556):
+- **Less than US$25,000** — Authorised Approvers: A4.
+- **General Average a) Declaration of General Average b) Settlement of General Average**
+    - **Regardless of amount (8)** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 3 (Score 0.550):
+- **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+- **Acquisition, disposal of IT related fixed assets a) Equipment and fixtures b) Intellectual property c) Software (including development cost) (6) d) Other IT assets**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A1; Deliberation: MM; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+    - **US$25,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **US$10,000 or more** — Authorised Approvers: A3.
+    - **Less than US$10,000** — Authorised Approvers: A4; Review: -.
+
+Doc 4 (Score 0.539):
+- **Claim settlement (matters under insurance coverage)**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4.
+- **Claim settlement (Others) Payment of cancellation fee/ penalty charge**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+
+Doc 5 (Score 0.517):
+## Page 11 - Authority Table 1
+
+- **Make payment on behalf of others, to be reimbursed afterwards**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+
+### Notes and Additional Information
+- - No approval is required for payment on behalf of MOL, MCTSPR 100% subsidiary, MCTSPR EOs and employees. - No approval is required for the amount to be borne by Owner (Owner's account), when MCTSPR has outstanding payable amount equal to or greater than the amount of payment in place of the Owner.
+
+
+Question: Who is responsible for reviewing applications that require A3 and above approvals?
+Context:
+Doc 1 (Score 0.655):
+- All A3 and above approvals require GPM review with some exceptions.
+- A4 approvals do not need GPM's review.
+- o Each approver is to specify its form and procedure; it does not necessarily have to be circulated in the Docusign and could be in an email or pdf format.
+- o A4 to keep records of all A4 approvals and documents in the SharePoint together with a list of records.
+- For Approval of Accounting Slips (Account Payable/Account Receivable/General Ledger), A4 and above have the approval authority. Approval right may be granted to A5 in the same department at the discretion of A4, and it is not allowed to authorise someone outside of their direct reporting line .
+- For signing of contracts/debit note/credit note/documents to be submitted to 3rd parties (including MOL and MCTSPR subsidiaries), A5 and above have the authority to sign, subject to obtaining required approval .
+- For criteria with multiple dots on authorised approver levels, all the indicated approvals are required.
+
+Doc 2 (Score 0.633):
+| A3          | EO / Global/Regional Director     | For applicants with direct reporting line to A1, A1 shall be the approver for A2 authority.                                                                                                           |
+| A4          | HOD                               | For applicants with direct reporting line to A1, A1 shall be the approver for A2 authority.                                                                                                           |
+| A5          | Senior Specialist / Leader        | For applicants with direct reporting line to A1, A1 shall be the approver for A2 authority.                                                                                                           |
+
+Doc 3 (Score 0.574):
+- o With reference to an example as shown below, this application requires MOL (Shareholder), BDM (Board of Directors) and A1 (CEO) approvals with MM deliberation and GPM review.
+
+Doc 4 (Score 0.564):
+| ABV.                   | DESCRIPTION            | DEFINITION                                                                                                                                                                                 |
+|------------------------|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| ●                      | Approval               | Approval authority which requires written approval. For A3 approval and above, official application in the prescribed form designated by Group Planning and  Management Dept. is required. |
+| *                      | Important point        | Important point to take note of for respective approval criteria.                                                                                                                          |
+
+Doc 5 (Score 0.560):
+- **Head of Department or above** — Authorised Approvers: BDM, A1; Deliberation: MM.
+    - **Other than the above** — Authorised Approvers: A1; Deliberation: MM.
+- **Personnel Appraisal (26)**
+- ** Promotion/ Demotion**
+    - **Head of Department or above** — Authorised Approvers: BDM, A1; Deliberation: MM.
+    - **Other than the above** — Authorised Approvers: A1; Deliberation: MM.
+- ** Decision of salary, allowance, bonus** — Authorised Approvers: A1; Deliberation: MM.
+- ** Disciplinary action** — Authorised Approvers: A1; Deliberation: MM.
+- ** Payment of AWS** — Authorised Approvers: A3.
+- **Matters related to secondees**
+- ** Salary and expense adjustment**
+    - **Others** — Authorised Approvers: A1; Deliberation: MM.
+- **Taking up position in external organisation/ association/ committee, etc. (24)** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+
+
+Question: Who needs to be notified for asset acquisitions valued between USD 25,000 and USD 50,000?
+Context:
+Doc 1 (Score 0.593):
+- **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+- **Acquisition, disposal of IT related fixed assets a) Equipment and fixtures b) Intellectual property c) Software (including development cost) (6) d) Other IT assets**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A1; Deliberation: MM; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+    - **US$25,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **US$10,000 or more** — Authorised Approvers: A3.
+    - **Less than US$10,000** — Authorised Approvers: A4; Review: -.
+
+Doc 2 (Score 0.555):
+- **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 3 (Score 0.523):
+- **Providing guarantee, acquisition/ disposal of securities**
+    - **JP¥30million or more (2)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Less than JP¥30million** — Authorised Approvers: A2; Report: MM; Review: GPM.
+- **Acquisition (3), disposal (4) of fixed assets (Excluding IT related assets) a) Equipment and fixtures b) Golf course membership c) Intellectual property d) Other assets - Excluding acquisition/ disposal of vessel(s) - Excluding capital expenditure of vessel(s)**
+    - **US$1million or more (5)** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM; CC: AF.
+    - **US$500,000 or more (5)** — Authorised Approvers: MOL, A2; Report: MM; Review: GPM.
+    - **US$100,000 or more (5)** — Authorised Approvers: MOL, A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+
+Doc 4 (Score 0.493):
+- **Less than US$25,000** — Authorised Approvers: A4.
+- **General Average a) Declaration of General Average b) Settlement of General Average**
+    - **Regardless of amount (8)** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 5 (Score 0.488):
+### Notes and Additional Information
+- - Refer to Official Authority Regulations Common Rules (1) for starting of new business, joint venture and merger.
+- - HOD of the applicant for the purchase is also responsible for the management of fixed assets (e.g. maintenance). Excluding vessel(s) and capital expenditure for vessel(s).
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+3 Acquisition: acquisition price
+4 Disposal: remaining book value
+6 Refer to ICT Governance Code Article 14
+
+## Page 11 - Authority Table 1
+
+
+Question: Who are the authorized approvers for insurances other than vessel-related insurances?
+Context:
+Doc 1 (Score 0.639):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 17 - Authority Table 1
+
+- **Purchasing Insurance:**
+- **① Vessel-related insurances**
+- ** Annual plan** — Authorised Approvers: A2; Review: GPM.
+- **- Execution of annual plan** — Authorised Approvers: A4.
+- ** Others**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A4.
+- **② Other insurances**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Review: GPM.
+- **Appointment/ Removal of Directors/ EOs** — Authorised Approvers: MOL, BDM, A1; Review: GPM.
+- **Conclusion/ Renewal of contract with MOL and its subsidiaries**
+    - **Conclusion** — Authorised Approvers: A1; Co-Management Dept.: Relevant Dept. (20); Deliberation: MM; Review: GPM.
+    - **Renewal** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 2 (Score 0.611):
+### Notes and Additional Information
+- - Business Planning Dept. is responsible for vessels - related insurances (TCL, DTH, FDD). - Ship Management Dept. is responsible for other vessels - related insurances (Hull & Machinery, Loss of Hire, War Risk, Cargo Claim Indemnity, P&I insurance etc.) - HR Dept is responsible for personnel insurances.
+- 15 MM report for amount USD500k or more 16 Email report for amount less than USD500k
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 17 - Authority Table 2
+
+- **Audit planning and reporting**
+    - **Annual audit plan** — Authorised Approvers: A1; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 18 - Authority Table 1
+
+Doc 3 (Score 0.585):
+## Page 27 - Authority Table 1
+
+- **Procurement of EUA (EU-ETS) Forward Contracts with physical delivery (46)**
+- ** Policy** — Authorised Approvers: A3, ES; Review: GPM.
+- ** Execution** — Authorised Approvers: A3, ES; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+17 TECHNICAL DEPARTMENT
+46 Based on delivery date that is after 3 months or more
+47 Including capital expenditure for new building vessels
+48 Up to 115% of approved amount
+
+## Page 27 - Authority Table 3
+
+- **Marine safety, quality and efficient operation  Safety Meeting and Campaign Plan** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **Coordination of security arrangements (including Security Guard etc)** — Authorised Approvers: A3; Review: GPM.
+- **Honourable vessel selection** — Authorised Approvers: A3; Report: MM; Review: GPM.
+
+Doc 4 (Score 0.572):
+- **Claim settlement (matters under insurance coverage)**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4.
+- **Claim settlement (Others) Payment of cancellation fee/ penalty charge**
+    - **US$1million or more** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+    - **US$500,000 or more** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **US$100,000 or more** — Authorised Approvers: A2; Review: GPM.
+    - **US$50,000 or more** — Authorised Approvers: A3; Review: GPM.
+    - **Less than US$50,000** — Authorised Approvers: A4; Report: A3 via Email.
+    - **Less than US$25,000** — Authorised Approvers: A4.
+
+Doc 5 (Score 0.570):
+### Notes and Additional Information
+- - For the amendment or cancellation of a contract, the above criteria are applied based on the remaining period at the time of the amendment or cancellation. 18 GPM HOD decides whether it is important or others. 38 For JOL, AF will take on the responsibility of Co - Management 39 For other cases, BS will take on the responsibility of Co - Management
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 23 - Authority Table 2
+
+- **Matters related to White Lists**
+- ** Annual Review**
+    - **Cargo delivery by Single LOI** — Authorised Approvers: A1; Review: GPM.
+    - **Upon Completion of discharging (or later ) payment** — Authorised Approvers: A3; Review: GPM.
+
+
+Question: Who are the authorized approvers for vessel-related insurance in the execution of the annual plan?
+Context:
+Doc 1 (Score 0.630):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 17 - Authority Table 1
+
+- **Purchasing Insurance:**
+- **① Vessel-related insurances**
+- ** Annual plan** — Authorised Approvers: A2; Review: GPM.
+- **- Execution of annual plan** — Authorised Approvers: A4.
+- ** Others**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A4.
+- **② Other insurances**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Review: GPM.
+- **Appointment/ Removal of Directors/ EOs** — Authorised Approvers: MOL, BDM, A1; Review: GPM.
+- **Conclusion/ Renewal of contract with MOL and its subsidiaries**
+    - **Conclusion** — Authorised Approvers: A1; Co-Management Dept.: Relevant Dept. (20); Deliberation: MM; Review: GPM.
+    - **Renewal** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 2 (Score 0.618):
+### Notes and Additional Information
+- - Business Planning Dept. is responsible for vessels - related insurances (TCL, DTH, FDD). - Ship Management Dept. is responsible for other vessels - related insurances (Hull & Machinery, Loss of Hire, War Risk, Cargo Claim Indemnity, P&I insurance etc.) - HR Dept is responsible for personnel insurances.
+- 15 MM report for amount USD500k or more 16 Email report for amount less than USD500k
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 17 - Authority Table 2
+
+- **Audit planning and reporting**
+    - **Annual audit plan** — Authorised Approvers: A1; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 18 - Authority Table 1
+
+Doc 3 (Score 0.599):
+## Page 27 - Authority Table 1
+
+- **Procurement of EUA (EU-ETS) Forward Contracts with physical delivery (46)**
+- ** Policy** — Authorised Approvers: A3, ES; Review: GPM.
+- ** Execution** — Authorised Approvers: A3, ES; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+17 TECHNICAL DEPARTMENT
+46 Based on delivery date that is after 3 months or more
+47 Including capital expenditure for new building vessels
+48 Up to 115% of approved amount
+
+## Page 27 - Authority Table 3
+
+- **Marine safety, quality and efficient operation  Safety Meeting and Campaign Plan** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **Coordination of security arrangements (including Security Guard etc)** — Authorised Approvers: A3; Review: GPM.
+- **Honourable vessel selection** — Authorised Approvers: A3; Report: MM; Review: GPM.
+
+Doc 4 (Score 0.590):
+## Page 27 - Authority Table 4
+
+- **Matters related to dry dock and modification**
+- **① Capital expenditure to vessels (Plan) (47)** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **② Capital expenditure to vessels (Execution) (48)**
+- ** Not in line with the approved plan**
+    - **USD100,000 or more** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **USD50,000 or more** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+    - **Less than USD50,000** — Authorised Approvers: A3; Review: GPM.
+- **Matters related to new building vessels**
+- ** Conclude supervisory agreements**
+    - **With UNIX/ MCTTKY** — Authorised Approvers: A3; Review: GPM.
+    - **Others** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+
+Doc 5 (Score 0.573):
+### Notes and Additional Information
+- - For the amendment or cancellation of a contract, the above criteria are applied based on the remaining period at the time of the amendment or cancellation. 18 GPM HOD decides whether it is important or others. 38 For JOL, AF will take on the responsibility of Co - Management 39 For other cases, BS will take on the responsibility of Co - Management
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 23 - Authority Table 2
+
+- **Matters related to White Lists**
+- ** Annual Review**
+    - **Cargo delivery by Single LOI** — Authorised Approvers: A1; Review: GPM.
+    - **Upon Completion of discharging (or later ) payment** — Authorised Approvers: A3; Review: GPM.
+
+
+Question: Who is responsible for war risk-related insurances?
+Context:
+Doc 1 (Score 0.387):
+### Notes and Additional Information
+- - For the amendment or cancellation of a contract, the above criteria are applied based on the remaining period at the time of the amendment or cancellation. 18 GPM HOD decides whether it is important or others. 38 For JOL, AF will take on the responsibility of Co - Management 39 For other cases, BS will take on the responsibility of Co - Management
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 23 - Authority Table 2
+
+- **Matters related to White Lists**
+- ** Annual Review**
+    - **Cargo delivery by Single LOI** — Authorised Approvers: A1; Review: GPM.
+    - **Upon Completion of discharging (or later ) payment** — Authorised Approvers: A3; Review: GPM.
+
+Doc 2 (Score 0.376):
+### Notes and Additional Information
+- - Business Planning Dept. is responsible for vessels - related insurances (TCL, DTH, FDD). - Ship Management Dept. is responsible for other vessels - related insurances (Hull & Machinery, Loss of Hire, War Risk, Cargo Claim Indemnity, P&I insurance etc.) - HR Dept is responsible for personnel insurances.
+- 15 MM report for amount USD500k or more 16 Email report for amount less than USD500k
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 17 - Authority Table 2
+
+- **Audit planning and reporting**
+    - **Annual audit plan** — Authorised Approvers: A1; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 18 - Authority Table 1
+
+Doc 3 (Score 0.371):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 17 - Authority Table 1
+
+- **Purchasing Insurance:**
+- **① Vessel-related insurances**
+- ** Annual plan** — Authorised Approvers: A2; Review: GPM.
+- **- Execution of annual plan** — Authorised Approvers: A4.
+- ** Others**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A4.
+- **② Other insurances**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Review: GPM.
+- **Appointment/ Removal of Directors/ EOs** — Authorised Approvers: MOL, BDM, A1; Review: GPM.
+- **Conclusion/ Renewal of contract with MOL and its subsidiaries**
+    - **Conclusion** — Authorised Approvers: A1; Co-Management Dept.: Relevant Dept. (20); Deliberation: MM; Review: GPM.
+    - **Renewal** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 4 (Score 0.370):
+## Page 24 - Authority Table 1
+
+- **Bunker Derivative Contract**
+- ** Conclusion of Master Agreement** — Authorised Approvers: A2; Report: MM; Review: GPM.
+- ** Annual Plan (Policy)**
+        -  — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+- ** Execution** — Authorised Approvers: A2; Review: GPM.
+- **Forward bunker purchase contract with physical delivery (41)** — Authorised Approvers: A2; Co-Management Dept.: Operation; Review: GPM.
+
+### Notes and Additional Information
+- 2. Moody’s Rating: B3 or better If no S&P rating exists, proceed to check Moody’s. 3. InfoSpectrum Rating: 4 or better If no Moody’s rating exists, proceed to check InfoSpectrum. If the InfoSpectrum rating is 5, refer to Dynamar, and the rating must be 5 or better.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+14 CHARTERING DEPARTMENT
+41 Based on delivery date that is after 3 months or more
+
+## Page 24 - Authority Table 2
+
+Doc 5 (Score 0.363):
+### Notes and Additional Information
+- - Adding a Charterer to the White List: For the approved period, each Chartering Department must apply for A1/A3 approval. - Charterers Requiring No Approval for White List Addition: Charterers whose ratings meet the criteria below do not require approval to be added to the White List. - Rating Check Order: Check the ratings in the following order: 1. S&P Rating: B - or better If this is not satisfied, apply for A1/A3 approval.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 24 - Authority Table 1
+
+
+Question: Who is responsible for vessel-related insurances, including cargo claim identity and P&I insurances?
+Context:
+Doc 1 (Score 0.466):
+### Notes and Additional Information
+- - For the amendment or cancellation of a contract, the above criteria are applied based on the remaining period at the time of the amendment or cancellation. 18 GPM HOD decides whether it is important or others. 38 For JOL, AF will take on the responsibility of Co - Management 39 For other cases, BS will take on the responsibility of Co - Management
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 23 - Authority Table 2
+
+- **Matters related to White Lists**
+- ** Annual Review**
+    - **Cargo delivery by Single LOI** — Authorised Approvers: A1; Review: GPM.
+    - **Upon Completion of discharging (or later ) payment** — Authorised Approvers: A3; Review: GPM.
+
+Doc 2 (Score 0.463):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 17 - Authority Table 1
+
+- **Purchasing Insurance:**
+- **① Vessel-related insurances**
+- ** Annual plan** — Authorised Approvers: A2; Review: GPM.
+- **- Execution of annual plan** — Authorised Approvers: A4.
+- ** Others**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A4.
+- **② Other insurances**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Review: GPM.
+- **Appointment/ Removal of Directors/ EOs** — Authorised Approvers: MOL, BDM, A1; Review: GPM.
+- **Conclusion/ Renewal of contract with MOL and its subsidiaries**
+    - **Conclusion** — Authorised Approvers: A1; Co-Management Dept.: Relevant Dept. (20); Deliberation: MM; Review: GPM.
+    - **Renewal** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 3 (Score 0.458):
+### Notes and Additional Information
+- - Business Planning Dept. is responsible for vessels - related insurances (TCL, DTH, FDD). - Ship Management Dept. is responsible for other vessels - related insurances (Hull & Machinery, Loss of Hire, War Risk, Cargo Claim Indemnity, P&I insurance etc.) - HR Dept is responsible for personnel insurances.
+- 15 MM report for amount USD500k or more 16 Email report for amount less than USD500k
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 17 - Authority Table 2
+
+- **Audit planning and reporting**
+    - **Annual audit plan** — Authorised Approvers: A1; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 18 - Authority Table 1
+
+Doc 4 (Score 0.441):
+- ** Cargo release against Single LOI for a Charterer not listed in White List** — Authorised Approvers: A1; Co-Management Dept.: BS; Review: GPM.
+- **② UCD (or later) Payment**
+- ** Adding a Charterer to White List** — Authorised Approvers: A3; Co-Management Dept.: BS.
+- ** Acceptance of payment term "Upon completion of discharging" or later** — Authorised Approvers: A3; Co-Management Dept.: BS.
+
+Doc 5 (Score 0.414):
+- **⑤ 1 year and less (annual volume more than 120,000 and less than 300,000mt)** — Authorised Approvers: A2; Co-Management Dept.: BS; Review: GPM.
+- **⑥ 1 year and less (annual volume 120,000mt and less)** — Authorised Approvers: A3; Co-Management Dept.: BS.
+- **< Contract of new trade lane (regardless of the volume)>**
+- **① 3 years and more**
+        -  — Authorised Approvers: BDM, A1; Co-Management Dept.: BS; Deliberation: MM; Review: GPM.
+- **② More than 1 year - less than 3 years** — Authorised Approvers: A1; Co-Management Dept.: BS; Report: MM; Review: GPM.
+- **Cancellation of COA/ RCA/ CVC** — Authorised Approvers: A2; Co-Management Dept.: BS; Report: MM; Review: GPM.
+- **Proposal of cancellation of Spot Fixture (43)**
+- **① 6 months and more in advance** — Authorised Approvers: A3; Co-Management Dept.: BS.
+- **Charterer's Credit Management**
+- **① Single LOI Delivery**
+- ** Adding a Charterer to White List** — Authorised Approvers: A1; Co-Management Dept.: BS; Review: GPM.
+
+
+Question: Who is responsible for the appointment or approval of directors?
+Context:
+Doc 1 (Score 0.440):
+- o With reference to an example as shown below, this application requires MOL (Shareholder), BDM (Board of Directors) and A1 (CEO) approvals with MM deliberation and GPM review.
+
+Doc 2 (Score 0.430):
+| BDM         | BDM                               | Requires Board of Directors’ approval                                                                                                                                                                 |
+| A1          | CEO                               | For the position of A1-A5, refer to “3 List of Authorised Persons”.                                                                                                                                   |
+| A2          | EO also serving as Directors  (1) | For applicants with direct reporting line to A1, A1 shall be the approver for A2 authority.                                                                                                           |
+
+Doc 3 (Score 0.403):
+- **Mid/ Long term management plan** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Increase or decrease of capital** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Dividend distribution** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Issue of bond/ public offering of stock** — Authorised Approvers: BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Merger, split, dissolution**
+    - **Merger, split, dissolution of MCTSPR** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Co-Management for merger, split, dissolution of MCTSPR subsidiary** — Authorised Approvers: A4; Review: GPM.
+- **Granting Authority (22)**
+    - **Authority of persons under the position of A4 or below** — Authorised Approvers: A3; Review: GPM.
+    - **Authority of A3** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+Doc 4 (Score 0.381):
+| Director   | Director                        | -  Global / Regional Director                                                                                                          | Directors are delegated authority from Executive Officers to manage entire functions  or parts thereof. They have the eligibility to exercise Executive Officer authority  when delegated.                  |
+| Department | Department Head                 | -  Head of Department (“HOD”)                                                                                                          | This role involves managing a department, with authority to make significant  operational decisions.                                                                                                        |
+
+Doc 5 (Score 0.379):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(Other than MCTSPR subsidiaries) JPY 30 million and
+32 When conditions, other than the period, are to be changed.
+33 No approval is required for repayments.
+34 Prepayment before the contract’s maturity date.
+
+## Page 22 - Authority Table 1
+
+- **Matters related to Shareholder's Meeting (36)  Calling a shareholder's meeting** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+11 GENERAL ADMINISTRATION DEPARTMENT
+12 FLEET STRATEGY DEPARTMENT
+building vessel (including capital vessel) Technical
+expenditure to fulfil requirements for Less than USD100,000
+special depreciation) (per vessel)
+36 Refer to “Memorandum and Articles of Association”
+37 Book value as of the delivery date
+38 For JOL, AF will take on the responsibility of Co - Management
+
+## Page 22 - Authority Table 2
+
+
+Question: Who is responsible for the appointment or approval of directors?
+Context:
+Doc 1 (Score 0.440):
+- o With reference to an example as shown below, this application requires MOL (Shareholder), BDM (Board of Directors) and A1 (CEO) approvals with MM deliberation and GPM review.
+
+Doc 2 (Score 0.430):
+| BDM         | BDM                               | Requires Board of Directors’ approval                                                                                                                                                                 |
+| A1          | CEO                               | For the position of A1-A5, refer to “3 List of Authorised Persons”.                                                                                                                                   |
+| A2          | EO also serving as Directors  (1) | For applicants with direct reporting line to A1, A1 shall be the approver for A2 authority.                                                                                                           |
+
+Doc 3 (Score 0.403):
+- **Mid/ Long term management plan** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Increase or decrease of capital** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Dividend distribution** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Issue of bond/ public offering of stock** — Authorised Approvers: BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Merger, split, dissolution**
+    - **Merger, split, dissolution of MCTSPR** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Co-Management for merger, split, dissolution of MCTSPR subsidiary** — Authorised Approvers: A4; Review: GPM.
+- **Granting Authority (22)**
+    - **Authority of persons under the position of A4 or below** — Authorised Approvers: A3; Review: GPM.
+    - **Authority of A3** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+Doc 4 (Score 0.381):
+| Director   | Director                        | -  Global / Regional Director                                                                                                          | Directors are delegated authority from Executive Officers to manage entire functions  or parts thereof. They have the eligibility to exercise Executive Officer authority  when delegated.                  |
+| Department | Department Head                 | -  Head of Department (“HOD”)                                                                                                          | This role involves managing a department, with authority to make significant  operational decisions.                                                                                                        |
+
+Doc 5 (Score 0.379):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(Other than MCTSPR subsidiaries) JPY 30 million and
+32 When conditions, other than the period, are to be changed.
+33 No approval is required for repayments.
+34 Prepayment before the contract’s maturity date.
+
+## Page 22 - Authority Table 1
+
+- **Matters related to Shareholder's Meeting (36)  Calling a shareholder's meeting** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+11 GENERAL ADMINISTRATION DEPARTMENT
+12 FLEET STRATEGY DEPARTMENT
+building vessel (including capital vessel) Technical
+expenditure to fulfil requirements for Less than USD100,000
+special depreciation) (per vessel)
+36 Refer to “Memorandum and Articles of Association”
+37 Book value as of the delivery date
+38 For JOL, AF will take on the responsibility of Co - Management
+
+## Page 22 - Authority Table 2
+
+
+Question: Who is authorized to conclude or renew a contract with MOL?
+Context:
+Doc 1 (Score 0.542):
+### Notes and Additional Information
+- - Refer to Official Authority Regulations Common Rules for a contract with MOL or its subsidiaries. - GPM HOD may appoint another department as the responsible department. - Approval is required at least once a year for continuation of the contracts without a fixed term. (Additional annual approval is not required for the contracts between MCTSPR subsidiaries when the conditions remain the same.)
+- - Approval in MCTSPR is required for the contracts entrusted to subsidiaries since those should be considered as the contracts of MCTSPR. - The System Owner shall be the Co - Management Dept. if BPO requires an external staff to utilise our internal systems.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(7) Fund Operation
+A① Interest swap* Evaluation value*
+11 The decision is based on total fee for regular purchase.
+
+## Page 14 - Authority Table 2
+
+Doc 2 (Score 0.531):
+- **⑥ Financing for new building vessel under construction**
+- ** Conclusion of facility agreement**
+    - **When financier is MTM** — Authorised Approvers: A2; Report: MM; Review: GPM.
+    - **Others** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- ** Drawdown/ Prepayment (34) under the agreement** — Authorised Approvers: A3; Review: GPM.
+- **⑦ Lending money to third parties (Other than MCTSPR subsidiaries)**
+    - **Above JPY 30 million** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **JPY 30 million and below** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **⑧ Loan to MOLCT Group Companies**
+- ** Lending money to MCTSPR subsidiaries (35)**
+    - **Regardless of Amount** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **⑨ Foreign exchange reservation (forward contracts)**
+    - **Policy** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **Execution** — Authorised Approvers: A1; Review: GPM.
+
+Doc 3 (Score 0.524):
+- **Acquisition/ Disposal of vessel(s)** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: BS; Deliberation: MM; Review: GPM.
+- **Conclusion of ship-building contract** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: BS; Deliberation: MM; Review: GPM.
+- **Decision of specifications for new building vessel (including capital expenditure to fulfil requirements for special depreciation)**
+    - **USD100,000 or more (per vessel)** — Authorised Approvers: A2; Co-Management Dept.: BS Technical; Report: MM; Review: GPM.
+    - **Less than USD100,000 (per vessel)** — Authorised Approvers: A3; Report: MM; Review: GPM.
+- **New building vessel (37)** — Authorised Approvers: A3; Review: GPM.
+- **Handling of Time Charter, Bare Boat Charter In/ Out**
+- **Conclusion/ Amendment/ Cancellation of Time Charterer, Bare Boat Charter**
+- **① With third parties**
+- ** Charter in**
+
+Doc 4 (Score 0.522):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 17 - Authority Table 1
+
+- **Purchasing Insurance:**
+- **① Vessel-related insurances**
+- ** Annual plan** — Authorised Approvers: A2; Review: GPM.
+- **- Execution of annual plan** — Authorised Approvers: A4.
+- ** Others**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A4.
+- **② Other insurances**
+    - **Important (18)** — Authorised Approvers: A2; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Review: GPM.
+- **Appointment/ Removal of Directors/ EOs** — Authorised Approvers: MOL, BDM, A1; Review: GPM.
+- **Conclusion/ Renewal of contract with MOL and its subsidiaries**
+    - **Conclusion** — Authorised Approvers: A1; Co-Management Dept.: Relevant Dept. (20); Deliberation: MM; Review: GPM.
+    - **Renewal** — Authorised Approvers: A2; Report: MM; Review: GPM.
+
+Doc 5 (Score 0.514):
+## Page 23 - Authority Table 1
+
+- ** Charter out**
+    - **3 years and more ▪ More than 1 year and less than 3 years** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF (38) BS (39); Deliberation: ● ●; Review: GPM.
+    - **6 months and more (40)** — Authorised Approvers: A3; Review: GPM.
+- ** Novation of the contract**
+    - **Important (18)** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+- **② Between MCTSPR and MCTSPR subsidiary  Irrespective of the period** — Authorised Approvers: A3; Review: GPM.
+- **Collecting of market information and conducting analysis  Getting appraisal value report** — Authorised Approvers: A4.
+
+
+Question: Is email reporting required for the renewal of a contract with MOL?
+Context:
+Doc 1 (Score 0.442):
+| MM          | MM Deliberation / Report          | Submission for MM deliberation and/or MM report                                                                                                                                                       |
+| Email       | Report via Email                  | MM or A3 report to be done via email reporting.                                                                                                                                                       |
+| GPM         | GPM to Review                     | Review of application for approval by Group Planning and Management Dept .  is required .                                                                                                             |
+
+Doc 2 (Score 0.425):
+### Notes and Additional Information
+- - Refer to Official Authority Regulations Common Rules for a contract with MOL or its subsidiaries. - GPM HOD may appoint another department as the responsible department. - Approval is required at least once a year for continuation of the contracts without a fixed term. (Additional annual approval is not required for the contracts between MCTSPR subsidiaries when the conditions remain the same.)
+- - Approval in MCTSPR is required for the contracts entrusted to subsidiaries since those should be considered as the contracts of MCTSPR. - The System Owner shall be the Co - Management Dept. if BPO requires an external staff to utilise our internal systems.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(7) Fund Operation
+A① Interest swap* Evaluation value*
+11 The decision is based on total fee for regular purchase.
+
+## Page 14 - Authority Table 2
+
+Doc 3 (Score 0.425):
+### Notes and Additional Information
+- Responsible Department Conclusion/ Termination/ Revision of Service Agreement: - Commercial Subsidiaries (MCTTKY, MCTDBI, MCTCPH, MCTLDN, MCTHOU, MCTBOG, MCTRDM, MCTWTN) – GPM Dept. - Ship Management Subsidiaries (Unix, TMS) – Ship Management Dept. Decision/ Payment of Service Fee: - Commercial Subsidiaries (MCTTKY, MCTDBI, MCTCPH, MCTLDN, MCTHOU, MCTBOG, MCTRDM, MCTWTN) – GAF Dept. - Ship Management Subsidiaries (Unix, TMS) – Ship Management Dept. *Approval is not required for the continuation of service agreement under the same terms and conditions. (Only applicable for intergroup service agreements.)
+- - Refer to “Regulations Handling Regulations” - No approval is required for amendments in line with change of organisation/ personnel assigned. - No approval is required for the logical amendments related to the change of organisation.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 17 - Authority Table 1
+
+Doc 4 (Score 0.424):
+- **Conclusion of Spot Voyage Charter  With payment term "before breaking bulk" or earlier <Laydays Commencement> ① 6 months and more in advance** — Authorised Approvers: A3; Co-Management Dept.: BS.
+- **Conclusion of Time Charterer Out (42) ① Less than 6 months** — Authorised Approvers: A3; Co-Management Dept.: BS; Review: GPM.
+- **Conclusion/ Renewal of COA/ RCA/ CVC**
+- **< Contract period, annual volume>**
+- **① 3 years and more**
+        -  — Authorised Approvers: BDM, A1; Co-Management Dept.: BS; Deliberation: MM; Review: GPM.
+- **② More than 1 year - less than 3 years (annual volume more than 120,000mt)** — Authorised Approvers: A2; Co-Management Dept.: BS; Report: MM; Review: GPM.
+- **③ More than 1 year - less than 3 years (annual volume less than 120,000mt)** — Authorised Approvers: A2; Co-Management Dept.: BS; Review: GPM.
+- **④ 1 year and less (annual volume more than 300,000mt)** — Authorised Approvers: A2; Co-Management Dept.: BS; Report: MM; Review: GPM.
+
+Doc 5 (Score 0.414):
+## Page 23 - Authority Table 1
+
+- ** Charter out**
+    - **3 years and more ▪ More than 1 year and less than 3 years** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF (38) BS (39); Deliberation: ● ●; Review: GPM.
+    - **6 months and more (40)** — Authorised Approvers: A3; Review: GPM.
+- ** Novation of the contract**
+    - **Important (18)** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+- **② Between MCTSPR and MCTSPR subsidiary  Irrespective of the period** — Authorised Approvers: A3; Review: GPM.
+- **Collecting of market information and conducting analysis  Getting appraisal value report** — Authorised Approvers: A4.
+
+
+Question: What are the classifications within the internal audit department?
+Context:
+Doc 1 (Score 0.438):
+| 5                   | COMMON RULES ................................................................................................................................................................................................  15 | COMMON RULES ................................................................................................................................................................................................  15                                       |
+| 6                   | INTERNAL AUDIT DEPARTMENT  ......................................................................................................................................................................  17             | INTERNAL AUDIT DEPARTMENT  ......................................................................................................................................................................  17                                                   |
+
+Doc 2 (Score 0.431):
+|  10 | GROUP ACCOUNTING & FINANCE DEPARTMENT ..........................................................................................................................................  20                         |
+|  11 | GENERAL ADMINISTRATION DEPARTMENT ...................................................................................................................................................  22                    |
+|  12 | FLEET STRATEGY DEPARTMENT  ....................................................................................................................................................................  22          |
+|  13 | BUSINESS STRATEGY DEPARTMENT  .............................................................................................................................................................  23              |
+
+Doc 3 (Score 0.384):
+### Notes and Additional Information
+- - Business Planning Dept. is responsible for vessels - related insurances (TCL, DTH, FDD). - Ship Management Dept. is responsible for other vessels - related insurances (Hull & Machinery, Loss of Hire, War Risk, Cargo Claim Indemnity, P&I insurance etc.) - HR Dept is responsible for personnel insurances.
+- 15 MM report for amount USD500k or more 16 Email report for amount less than USD500k
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 17 - Authority Table 2
+
+- **Audit planning and reporting**
+    - **Annual audit plan** — Authorised Approvers: A1; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+6 INTERNAL AUDIT DEPARTMENT
+
+## Page 18 - Authority Table 1
+
+Doc 4 (Score 0.357):
+| Unit       | Senior Staff                    | -  Senior Associate -  Senior Operations Associate  -  Senior Marine Superintendent -  Senior Technical Superintendent -  Port Captain | Other Staff is to execute the duties under the supervision of the Leader.                                                                                                                                   |
+| Unit       | Staff                           | -  Associate -  Operations Associate -  Freight Trader                                                                                 | Other Staff is to execute the duties under the supervision of the Leader.                                                                                                                                   |
+
+Doc 5 (Score 0.356):
+| Duties   | Duties                                                 | Duties                 | Duties              | Duties              | Duties              | Duties       | Duties   | Duties   | Duties   | Duties   | Duties   | Duties   | Duties   | Duties   | Duties   |
+|----------|--------------------------------------------------------|------------------------|---------------------|---------------------|---------------------|--------------|----------|----------|----------|----------|----------|----------|----------|----------|----------|
+| SN       | Classification                                         |                        | Authorised Approver | Authorised Approver | Authorised Approver | Deliberation | Report   | Report   | Revien   |          |          |          |          |          |          |
+
+
+Question: What are the classifications under the group planning department?
+Context:
+Doc 1 (Score 0.472):
+|  10 | GROUP ACCOUNTING & FINANCE DEPARTMENT ..........................................................................................................................................  20                         |
+|  11 | GENERAL ADMINISTRATION DEPARTMENT ...................................................................................................................................................  22                    |
+|  12 | FLEET STRATEGY DEPARTMENT  ....................................................................................................................................................................  22          |
+|  13 | BUSINESS STRATEGY DEPARTMENT  .............................................................................................................................................................  23              |
+
+Doc 2 (Score 0.456):
+|   7 | GROUP PLANNING AND MANAGEMENT DEPARTMENT  ................................................................................................................................  18                               |
+|-----|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|   8 | GLOBAL HUMAN RESOURCES DEPARTMENT  ...............................................................................................................................................  18                       |
+|   9 | HUMAN RESOURCES DEPARTMENT (SINGAPORE) .......................................................................................................................................  19                           |
+
+Doc 3 (Score 0.427):
+### Notes and Additional Information
+- Responsible Dept. - Department in charge of each subsidiary’s management; refer to "Subsidiaries Management Regulation"
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+7 GROUP PLANNING AND MANAGEMENT DEPARTMENT
+8 GLOBAL HUMAN RESOURCES DEPARTMENT
+21 Subject to shareholder's approval for more than 3 - year plan
+
+## Page 18 - Authority Table 2
+
+- **Manpower planning** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **Change of organisation** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **Establishment, Abolishment, Revision of Global HR Policy** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+7 GROUP PLANNING AND MANAGEMENT DEPARTMENT
+8 GLOBAL HUMAN RESOURCES DEPARTMENT
+21 Subject to shareholder's approval for more than 3 - year plan
+
+## Page 19 - Authority Table 1
+
+Doc 4 (Score 0.409):
+## (4) Definition of Organisation and Positions/ Titles
+
+A unified three -layer hierarchy—Function, Department, and Unit—will be adopted across the MOLCT Group to ensure consistency and clarity in organizational structure.
+
+1. Function: These are the core components of our business, each managed by dedicated Executive Officers who ensure strategic alignment and operational effectiveness
+2. Department: Departments will execute the activities of their respective functions, led by a "Head of Department" who holds the relevant authority for approval within MCTSPR, irrespective of their legal entity affiliation.
+3. Unit: Units, as sub -components of Functions or Departments, will be led by a "Leader," focusing on specific operational tasks and objectives.
+
+## MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## Page 4
+
+## MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+Doc 5 (Score 0.393):
+| MM          | MM Deliberation / Report          | Submission for MM deliberation and/or MM report                                                                                                                                                       |
+| Email       | Report via Email                  | MM or A3 report to be done via email reporting.                                                                                                                                                       |
+| GPM         | GPM to Review                     | Review of application for approval by Group Planning and Management Dept .  is required .                                                                                                             |
+
+
+Question: Who is authorized to manage the mid/long term management plan?
+Context:
+Doc 1 (Score 0.540):
+- **Mid/ Long term management plan** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Increase or decrease of capital** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Dividend distribution** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Issue of bond/ public offering of stock** — Authorised Approvers: BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Merger, split, dissolution**
+    - **Merger, split, dissolution of MCTSPR** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Co-Management for merger, split, dissolution of MCTSPR subsidiary** — Authorised Approvers: A4; Review: GPM.
+- **Granting Authority (22)**
+    - **Authority of persons under the position of A4 or below** — Authorised Approvers: A3; Review: GPM.
+    - **Authority of A3** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+Doc 2 (Score 0.484):
+### Notes and Additional Information
+- Responsible Dept. - Department in charge of each subsidiary’s management; refer to "Subsidiaries Management Regulation"
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+7 GROUP PLANNING AND MANAGEMENT DEPARTMENT
+8 GLOBAL HUMAN RESOURCES DEPARTMENT
+21 Subject to shareholder's approval for more than 3 - year plan
+
+## Page 18 - Authority Table 2
+
+- **Manpower planning** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **Change of organisation** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+- **Establishment, Abolishment, Revision of Global HR Policy** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+7 GROUP PLANNING AND MANAGEMENT DEPARTMENT
+8 GLOBAL HUMAN RESOURCES DEPARTMENT
+21 Subject to shareholder's approval for more than 3 - year plan
+
+## Page 19 - Authority Table 1
+
+Doc 3 (Score 0.478):
+- **① With third parties**
+- ** Charter in**
+    - **5 years and more** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF (38) BS (39); Deliberation: MM; Review: GPM.
+    - **More than 1 year and less than 5 years** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **1 year and less** — Authorised Approvers: A3; Review: GPM.
+
+Doc 4 (Score 0.453):
+## Page 23 - Authority Table 1
+
+- ** Charter out**
+    - **3 years and more ▪ More than 1 year and less than 3 years** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF (38) BS (39); Deliberation: ● ●; Review: GPM.
+    - **6 months and more (40)** — Authorised Approvers: A3; Review: GPM.
+- ** Novation of the contract**
+    - **Important (18)** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **Others** — Authorised Approvers: A3; Report: MM via Email; Review: GPM.
+- **② Between MCTSPR and MCTSPR subsidiary  Irrespective of the period** — Authorised Approvers: A3; Review: GPM.
+- **Collecting of market information and conducting analysis  Getting appraisal value report** — Authorised Approvers: A4.
+
+Doc 5 (Score 0.436):
+### Notes and Additional Information
+- - For the amendment or cancellation of a contract, the above criteria are applied based on the remaining period at the time of the amendment or cancellation. 18 GPM HOD decides whether it is important or others. 38 For JOL, AF will take on the responsibility of Co - Management 39 For other cases, BS will take on the responsibility of Co - Management
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 23 - Authority Table 2
+
+- **Matters related to White Lists**
+- ** Annual Review**
+    - **Cargo delivery by Single LOI** — Authorised Approvers: A1; Review: GPM.
+    - **Upon Completion of discharging (or later ) payment** — Authorised Approvers: A3; Review: GPM.
+
+
+Question: Who is authorized to split the MCTSPR?
+Context:
+Doc 1 (Score 0.562):
+## Page 1
+
+## MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+Doc 2 (Score 0.555):
+| DOCUMENT REVISIONS   | DOCUMENT REVISIONS   |
+|----------------------|----------------------|
+| 4 th  Revision       | 1 st  October 2018   |
+| 5 th  Revision       | 1 st  April 2021     |
+| 6 th  Revision       | 1 st  April 2024     |
+| 7 th  Revision       | 1 st  April 2025     |
+
+## Page 9
+
+## MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+## 3 LIST OF AUTHORISED PERSONS
+
+Refer below on the list of authorised persons for each authority level.
+
+| Authority Level   | Authorised Person                  |
+|-------------------|------------------------------------|
+| A1                | CEO Akira Sasa                     |
+| A2                | EOs also serving as Directors  (1) |
+| A3                | EOs and Global/Regional Directors  |
+| A4                | HOD                                |
+| A5                | Senior Specialists and Leaders     |
+
+1 Approver is dependent on applicant's reporting line and only for their responsible departments
+
+## Page 10 - Authority Table 2
+
+Doc 3 (Score 0.553):
+## Page 2
+
+## MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+Doc 4 (Score 0.520):
+- **Mid/ Long term management plan** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Increase or decrease of capital** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Dividend distribution** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Issue of bond/ public offering of stock** — Authorised Approvers: BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Merger, split, dissolution**
+    - **Merger, split, dissolution of MCTSPR** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Co-Management for merger, split, dissolution of MCTSPR subsidiary** — Authorised Approvers: A4; Review: GPM.
+- **Granting Authority (22)**
+    - **Authority of persons under the position of A4 or below** — Authorised Approvers: A3; Review: GPM.
+    - **Authority of A3** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+Doc 5 (Score 0.510):
+1 Approver is dependent on applicant's reporting line and only for their responsible departments
+
+## Page 7
+
+## MCTSPR OFFICIAL AUTHORITY REGULATIONS
+
+
+Question: Who is authorized for dividend distribution?
+Context:
+Doc 1 (Score 0.420):
+- **Mid/ Long term management plan** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Increase or decrease of capital** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Dividend distribution** — Authorised Approvers: MOL, BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Issue of bond/ public offering of stock** — Authorised Approvers: BDM, A1; Co-Management Dept.: AF; Deliberation: MM; Review: GPM.
+- **Merger, split, dissolution**
+    - **Merger, split, dissolution of MCTSPR** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+    - **Co-Management for merger, split, dissolution of MCTSPR subsidiary** — Authorised Approvers: A4; Review: GPM.
+- **Granting Authority (22)**
+    - **Authority of persons under the position of A4 or below** — Authorised Approvers: A3; Review: GPM.
+    - **Authority of A3** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+Doc 2 (Score 0.393):
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+(Other than MCTSPR subsidiaries) JPY 30 million and
+32 When conditions, other than the period, are to be changed.
+33 No approval is required for repayments.
+34 Prepayment before the contract’s maturity date.
+
+## Page 22 - Authority Table 1
+
+- **Matters related to Shareholder's Meeting (36)  Calling a shareholder's meeting** — Authorised Approvers: BDM, A1; Deliberation: MM; Review: GPM.
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+11 GENERAL ADMINISTRATION DEPARTMENT
+12 FLEET STRATEGY DEPARTMENT
+building vessel (including capital vessel) Technical
+expenditure to fulfil requirements for Less than USD100,000
+special depreciation) (per vessel)
+36 Refer to “Memorandum and Articles of Association”
+37 Book value as of the delivery date
+38 For JOL, AF will take on the responsibility of Co - Management
+
+## Page 22 - Authority Table 2
+
+Doc 3 (Score 0.374):
+- o With reference to an example as shown below, this application requires MOL (Shareholder), BDM (Board of Directors) and A1 (CEO) approvals with MM deliberation and GPM review.
+
+Doc 4 (Score 0.364):
+### Notes and Additional Information
+- - For the amendment or cancellation of a contract, the above criteria are applied based on the remaining period at the time of the amendment or cancellation. 18 GPM HOD decides whether it is important or others. 38 For JOL, AF will take on the responsibility of Co - Management 39 For other cases, BS will take on the responsibility of Co - Management
+
+### Additional Page Content
+MCTSPR OFFICIAL AUTHORITY REGULATIONS
+13 BUSINESS STRATEGY DEPARTMENT
+40 The Chartering Department is responsible for charters lasting less than 6 months.
+
+## Page 23 - Authority Table 2
+
+- **Matters related to White Lists**
+- ** Annual Review**
+    - **Cargo delivery by Single LOI** — Authorised Approvers: A1; Review: GPM.
+    - **Upon Completion of discharging (or later ) payment** — Authorised Approvers: A3; Review: GPM.
+
+Doc 5 (Score 0.354):
+- **Decision/ Revision of Accounting Policy**
+    - **Important (18)** — Authorised Approvers: A1; Deliberation: MM; Review: GPM.
+    - **Others** — Authorised Approvers: A2; Report: MM; Review: GPM.
+- **Matters related to financial closing (MCTSPR and group consolidated)  Financial Statement** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Matters related to Tax Affairs**
+- ** Corporate tax payment** — Authorised Approvers: A4; Report: MM via Email.
+- ** Goods and service tax payment** — Authorised Approvers: A4.
+- ** Appointment of tax accountant** — Authorised Approvers: Refer to “Amount Basis Approval Criteria”.
+- **Matters related to accounting audit**
+- ** Appointment/ Removal of accounting auditor** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- ** Audit fee** — Authorised Approvers: MOL, BDM, A1; Deliberation: MM; Review: GPM.
+- **Matters related to finance**
