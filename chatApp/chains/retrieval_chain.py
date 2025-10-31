@@ -188,6 +188,40 @@ class ThinkpalmCosmosRAGmethod2:
     # New (Simplified) ask method structure:
 
     def ask(self, user_id, question):
+        # --- Step 0: Classify the message ---
+        intent = self.llm.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Classify if the message is small talk or a business query."},
+                {"role": "user", "content": question}
+            ]
+        )
+        classification = intent.choices[0].message.content.lower()
+        
+        if "small talk" in classification:
+            # Let the LLM respond naturally, but in the corporate knowledge assistant tone
+            small_talk_response = self.llm.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": (
+                        "You are Thinkpalm's Corporate Knowledge Assistant. "
+                        "Even when replying to casual greetings or small talk, "
+                        "maintain a professional, courteous, and helpful tone. "
+                        "Respond in a friendly but corporate style."
+                    )},
+                    {"role": "user", "content": question}
+                ],
+                temperature=0.7
+            )
+            answer = small_talk_response.choices[0].message.content.strip()
+            
+            # Update memory
+            memory = self.get_memory(user_id)
+            memory.chat_memory.add_user_message(question)
+            memory.chat_memory.add_ai_message(answer)
+            
+            return {"answer": answer, "related": False}
+    
         # --- Step 1 & 2: Get History and Rewrite Query ---
         memory = self.get_memory(user_id)
         past_context = memory.load_memory_variables({}).get("history", "")
@@ -219,6 +253,8 @@ class ThinkpalmCosmosRAGmethod2:
 
         prompt = f"""
         Your task is to act as Thinkpalm’s Corporate Knowledge Assistant. Your goal is to provide a single, comprehensive answer to the user's question by synthesizing all relevant facts from the provided 'Document Context' and related data tables.
+
+IMPORTANT: Explicitly list all Authorised Approvers exactly as mentioned in the context (e.g., MOL, BDM, A1). Do NOT omit any approver, even if it seems implied. Ensure the final answer fully reflects the documents.
 
 Instructions:
 
