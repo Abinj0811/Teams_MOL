@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>RAG Upload Demo</title>
+</head>
+<body>
+  <h1>RAG Upload Demo</h1>
+
+  <h2>Register</h2>
+  <form id="registerForm">
+    Email: <input type="email" id="email" required />
+    <button type="submit">Register</button>
+  </form>
+
+  <h2>Upload File</h2>
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="file" id="file" />
+    <button type="submit">Upload</button>
+  </form>
+
+  <h2>Ask Question</h2>
+  <form id="askForm">
+    <input type="text" id="question" placeholder="Ask about uploaded files" size="60" />
+    <button type="submit">Ask</button>
+  </form>
+
+  <div id="output"></div>
+
+<script>
+const emailKey = "rag_demo_email";
+document.getElementById("registerForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("email").value;
+  localStorage.setItem(emailKey, email);
+  const form = new FormData();
+  form.append("email", email);
+  const res = await fetch("/register", { method: "POST", body: form });
+  document.getElementById("output").innerText = JSON.stringify(await res.json(), null, 2);
+};
+
+document.getElementById("uploadForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const email = localStorage.getItem(emailKey);
+  if (!email) { alert("Register first"); return; }
+  const f = document.getElementById("file").files[0];
+  const form = new FormData();
+  form.append("file", f);
+  const res = await fetch("/upload", { method: "POST", body: form, headers: {"X-User-Email": email} });
+  document.getElementById("output").innerText = JSON.stringify(await res.json(), null, 2);
+};
+
+document.getElementById("askForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const email = localStorage.getItem(emailKey);
+  const q = document.getElementById("question").value;
+  const res = await fetch("/ask", { method: "POST", headers: {"Content-Type":"application/json", "X-User-Email": email}, body: JSON.stringify({question: q}) });
+  document.getElementById("output").innerText = JSON.stringify(await res.json(), null, 2);
+};
+</script>
+</body>
+</html>

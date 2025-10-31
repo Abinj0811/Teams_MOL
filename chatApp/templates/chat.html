@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Knowledge Chat</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      background-color: #f0f2f5;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background-color: #0078d4;
+      color: white;
+      padding: 12px 20px;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    #chatContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      max-width: 700px;
+      width: 100%;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      margin-top: 20px;
+      overflow: hidden;
+    }
+
+    #chatBox {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background-color: #fafafa;
+    }
+
+    .msg {
+      max-width: 75%;
+      padding: 10px 14px;
+      border-radius: 12px;
+      line-height: 1.4;
+      word-wrap: break-word;
+    }
+
+    .user {
+      align-self: flex-end;
+      background-color: #0078d4;
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+
+    .assistant {
+      align-self: flex-start;
+      background-color: #e5e5ea;
+      color: #000;
+      border-bottom-left-radius: 2px;
+    }
+
+    #inputArea {
+      display: flex;
+      padding: 10px;
+      border-top: 1px solid #ccc;
+      background-color: #fff;
+    }
+
+    #question {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 20px;
+      outline: none;
+      font-size: 14px;
+    }
+
+    #askBtn {
+      margin-left: 10px;
+      padding: 10px 18px;
+      border: none;
+      border-radius: 20px;
+      background-color: #0078d4;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #askBtn:hover {
+      background-color: #005fa3;
+    }
+  </style>
+</head>
+<body>
+  <header>Ask the Knowledge Base</header>
+
+  <div id="chatContainer">
+    <div id="chatBox">
+      <p><i>Loading previous messages...</i></p>
+    </div>
+
+    <div id="inputArea">
+      <input type="text" id="question" placeholder="Type your question..." />
+      <button id="askBtn">Send</button>
+    </div>
+  </div>
+
+  <!-- Hidden user email -->
+  <input type="hidden" id="user_email" value="{{ user_email }}">
+
+  <script>
+    const chatBox = document.getElementById("chatBox");
+    const askBtn = document.getElementById("askBtn");
+    const user_email = document.getElementById("user_email").value;
+
+    function scrollToBottom() {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function renderChat(history) {
+      chatBox.innerHTML = "";
+      if (!history || history.length === 0) {
+        chatBox.innerHTML = "<p><i>No previous chat history.</i></p>";
+        return;
+      }
+      history.forEach(item => {
+        if (item.question)
+          chatBox.innerHTML += `<div class="msg user">${item.question}</div>`;
+        if (item.answer)
+          chatBox.innerHTML += `<div class="msg assistant">${item.answer}</div>`;
+      });
+      scrollToBottom();
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch(`/history?user_email=${encodeURIComponent(user_email)}`);
+        const data = await res.json();
+        renderChat(data.history.slice(-5)); // last 5 only
+      } catch (err) {
+        console.error("Error loading history:", err);
+        chatBox.innerHTML = "<p><i>Failed to load history.</i></p>";
+      }
+    }
+
+    askBtn.addEventListener("click", async () => {
+      const questionInput = document.getElementById("question");
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      chatBox.innerHTML += `<div class="msg user">${question}</div>`;
+      questionInput.value = "";
+      scrollToBottom();
+
+      const res = await fetch("/ask", {
+        method: "POST",
+        headers: { 
+          "X-User-Email": user_email,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ question })
+      });
+
+      const data = await res.json();
+      chatBox.innerHTML += `<div class="msg assistant">${data.answer}</div>`;
+      scrollToBottom();
+    });
+
+    // Load history immediately after login
+    window.addEventListener("load", loadHistory);
+  </script>
+</body>
+</html>

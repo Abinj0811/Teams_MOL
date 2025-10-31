@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Panel</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById("file");
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
+
+            const res = await fetch("/admin/upload", {
+                method: "POST",
+                body: formData
+            });
+            const data = await res.json();
+            if (data.status === "ok") {
+                alert(`File "${data.file}" uploaded successfully.`);
+                loadFiles();
+            } else {
+                alert("Upload failed.");
+            }
+        }
+
+        async function loadFiles() {
+            const res = await fetch("/admin/files");
+            const data = await res.json();
+            const fileList = document.getElementById("file-list");
+            fileList.innerHTML = "";
+
+            data.files.forEach(filename => {
+                const li = document.createElement("li");
+                li.textContent = filename + " ";
+                const delBtn = document.createElement("button");
+                delBtn.textContent = "Delete";
+                delBtn.onclick = () => deleteFile(filename);
+                li.appendChild(delBtn);
+                fileList.appendChild(li);
+            });
+        }
+
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) return;
+            const res = await fetch(`/admin/delete/${filename}`, { method: "DELETE" });
+            if (res.ok) {
+                alert(`${filename} deleted.`);
+                loadFiles();
+            } else {
+                alert("Failed to delete file.");
+            }
+        }
+
+        window.onload = loadFiles;
+    </script>
+</head>
+<body>
+    <h1>📂 Admin Panel</h1>
+    <div>
+        <h3>Upload New Document</h3>
+        <input type="file" id="file" />
+        <button onclick="uploadFile()">Upload</button>
+    </div>
+    <hr>
+    <div>
+        <h3>Uploaded Files</h3>
+        <ul id="file-list"></ul>
+    </div>
+</body>
+</html>

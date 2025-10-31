@@ -1,0 +1,23 @@
+# fastapi
+# uvicorn
+# python-multipart
+# python-dotenv
+# uvicorn
+
+langchain
+langchain-core
+langchain-community
+langchain-ollama
+faiss-cpu
+tiktoken
+
+#lanngraph
+langgraph
+docling
+pdfplumber
+sentence-transformers
+
+fastapi
+uvicorn
+python-multipart
+azure-cosmos
