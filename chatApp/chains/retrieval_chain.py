@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import json
 import re
+import random
 
 
 
@@ -61,6 +62,26 @@ class ThinkpalmCosmosRAGmethod2:
         self.memory_store = {}
         self.top_k = 5
         self.last_question_cache = {}
+        
+        self.SMALL_TALK_RESPONSES = {
+        "greeting": [
+            "Hello! I am Thinkpalm's Corporate Knowledge Assistant. How may I be of assistance with your business query?",
+            "Good day. Thank you for reaching out. I'm ready to help with any policy or knowledge questions you may have.",
+            "Hi there. I trust you are having a productive day. Please let me know your question.",
+            "Welcome! I am here to provide accurate and professional support. What information are you seeking?",
+        ],
+        "thanks": [
+            "You are most welcome. Is there anything else I can clarify or retrieve for you?",
+            "My pleasure. Do not hesitate to ask if further information is required.",
+            "Glad to be of assistance. Have a productive day.",
+        ],
+        "who_are_you": [
+            "I am Thinkpalm's Corporate Knowledge Assistant, designed to provide information and policy details from our internal knowledge base.",
+        ],
+        "generic_positive": [
+            "That is kind of you to say. I am functioning optimally and ready to address your corporate queries.",
+        ]
+    }
 
     # ------------------------------------------------------------
     # MEMORY MANAGEMENT
@@ -309,34 +330,77 @@ class ThinkpalmCosmosRAGmethod2:
             # Handle exceptions gracefully
             return None
 
+    
+# Define these as class attributes in your Knowledge Assistant class
+# or as constants accessible by the method.
+    
+    def _is_small_talk(self, question: str) -> bool:
+        """
+        Classifies a question as small talk using deterministic rules and keyword matching,
+        now robust against missing spaces in common phrases.
+        """
+        
+        question_lower = question.lower().strip()
+        
+        # Define common small talk keywords and their single-word equivalents (if applicable)
+        GREETINGS = ["hello", "hi", "hey", "good morning", "good evening", "greetings"]
+        INQUIRIES = ["how are you", "what's up", "what are you doing", "who are you"]
+        AFFIRMATIONS = ["thank you", "thanks", "i appreciate it", "bye", "goodbye"]
+        
+        # Consolidate all phrases to check
+        all_phrases = GREETINGS + INQUIRIES + AFFIRMATIONS
+        
+        # Add squashed versions of multi-word phrases for robustness (e.g., "thankyou", "howareyou")
+        squashed_phrases = []
+        for phrase in all_phrases:
+            if ' ' in phrase:
+                squashed_phrases.append(phrase.replace(' ', '').replace("'", ""))
+                
+        # Combine the full list for checking
+        all_checks = all_phrases + squashed_phrases
+        
+        # 1. Simple Keyword Match (covers most greetings, thanks, and squashed versions)
+        for phrase in all_checks:
+            if phrase in question_lower:
+                return True
+
+        # 2. Heuristic: Very short message (refine this as needed)
+        if len(question_lower.split()) <= 2 and len(question_lower) < 15:
+            # If the short message contains common small talk words, classify as small talk.
+            if any(word in question_lower for word in GREETINGS + ["thanks", "bye"]):
+                return True
+        
+        return False
+    def _generate_small_talk_response(self, question: str) -> str:
+        """
+        Selects a deterministic, professional response based on question type.
+        """
+        question_lower = question.lower().strip()
+        
+        # Check what kind of small talk it is (based on the same logic as _is_small_talk)
+        if any(phrase in question_lower for phrase in ["hello", "hi", "hey", "good morning", "greetings"]):
+            key = "greeting"
+        elif any(phrase in question_lower for phrase in ["thank you", "thanks", "i appreciate it"]):
+            key = "thanks"
+        elif any(phrase in question_lower for phrase in ["who are you", "what is your name"]):
+            key = "who_are_you"
+        else:
+            # Default for other simple small talk (like "how are you")
+            key = "generic_positive" 
+
+        # Select a random response from the category
+        return random.choice(self.SMALL_TALK_RESPONSES.get(key, self.SMALL_TALK_RESPONSES['greeting']))
 
     def ask(self, user_id, question):
-        # --- Step 0: Classify the message (No change) ---
-        intent = self.llm.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Classify if the message is small talk or a business query."},
-                {"role": "user", "content": question}
-            ]
-        )
-        classification = intent.choices[0].message.content.lower()
         
-        if "small talk" in classification:
-            # (Small talk handling remains the same)
-            small_talk_response = self.llm.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": (
-                        "You are Thinkpalm's Corporate Knowledge Assistant. "
-                        "Even when replying to casual greetings or small talk, "
-                        "maintain a professional, courteous, and helpful tone. "
-                        "Respond in a friendly but corporate style."
-                    )},
-                    {"role": "user", "content": question}
-                ],
-                temperature=0.7
-            )
-            answer = small_talk_response.choices[0].message.content.strip()
+        # --- Step 0: Classify the message (Using the efficient _is_small_talk) ---
+        is_small_talk = self._is_small_talk(question)
+        
+        if is_small_talk:
+            # --- Small Talk Handling (REPLACED LLM RESPONSE GENERATION) ---
+            
+            # Generate the response using the deterministic function
+            answer = self._generate_small_talk_response(question)
             
             # Update memory
             memory = self.get_memory(user_id)
