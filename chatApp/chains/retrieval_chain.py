@@ -11,6 +11,8 @@ from langchain_core.runnables import RunnablePassthrough
 # from langchain.schema import HumanMessage, AIMessage
 from dotenv import load_dotenv
 load_dotenv()
+import json
+import re
 
 
 
@@ -20,7 +22,8 @@ from datetime import datetime
 import os
 from sklearn.metrics.pairwise import cosine_similarity
 
-from langchain_classic.memory import ConversationBufferMemory
+from langchain_core.memory import BaseMemory
+from langchain.memory import ConversationBufferMemory
 
 # memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 # memory.save_context({"input": "Hi"}, {"output": "Hello there!"})
@@ -32,9 +35,11 @@ from datetime import datetime
 from typing import List, Dict
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from openai import OpenAI
-from sklearn.metrics.pairwise import cosine_similarity
-from langchain_classic.memory import ConversationSummaryMemory
+from langchain.memory import ConversationSummaryMemory
 from langchain_openai import ChatOpenAI
+
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 
 class ThinkpalmCosmosRAGmethod2:
@@ -126,7 +131,13 @@ class ThinkpalmCosmosRAGmethod2:
     # RAG SEARCH
     # ------------------------------------------------------------
     def search_cosmos_documents(self, query_embedding):
-        embedding_str = str(query_embedding).replace(" ", "")
+        """
+        Query Cosmos using the VectorDistance API. Ensure the embedding is JSON-serialized
+        so Cosmos receives a correct array. Returns a list of docs with id, text, metadata, score.
+        """
+        # Use json.dumps to produce a properly formatted array literal
+        embedding_str = json.dumps(query_embedding)
+
         query = f"""
         SELECT TOP {self.top_k}
             c.id, c.text, c.metadata,
@@ -134,7 +145,12 @@ class ThinkpalmCosmosRAGmethod2:
         FROM c
         ORDER BY VectorDistance(c.vector_embedding, {embedding_str})
         """
-        results = self.container.query_items(query=query, enable_cross_partition_query=True)
+        try:
+            results = list(self.container.query_items(query=query, enable_cross_partition_query=True))
+        except Exception as e:
+            print(f"Error running vector query: {e}")
+            results = []
+
         docs = []
         for d in results:
             docs.append({
@@ -143,13 +159,73 @@ class ThinkpalmCosmosRAGmethod2:
                 "metadata": d.get("metadata", {}),
                 "score": float(d.get("score", 0))
             })
+        # debug
+        print(f"[DEBUG] search_cosmos_documents returned {len(docs)} docs (top_k={self.top_k})")
+        return docs
+
+    def _keyword_fallback_search(self, keyword):
+
+        """
+
+        If vector retrieval misses the exact table row, use a simple keyword substring search
+
+        against the stored documents in Cosmos (or text index). This helps guarantee we get
+
+        explicit lines like "Appointment/ Removal of Directors/ EOs".
+
+        """
+
+        # escape single quotes in keyword for SQL
+
+        safe_kw = keyword.replace("'", "''")
+
+        query = f"""
+
+        SELECT TOP 20 c.id, c.text, c.metadata
+
+        FROM c
+
+        WHERE CONTAINS(c.text, '{safe_kw}')
+
+        """
+
+        try:
+
+            results = list(self.container.query_items(query=query, enable_cross_partition_query=True))
+
+        except Exception as e:
+
+            print(f"Keyword fallback search error: {e}")
+
+            results = []
+
+
+
+        docs = []
+
+        for d in results:
+
+            docs.append({
+
+                "id": d.get("id"),
+
+                "text": d.get("text", ""),
+
+                "metadata": d.get("metadata", {}),
+
+                "score": 0.0
+
+            })
+
+        print(f"[DEBUG] _keyword_fallback_search('{keyword}') found {len(docs)} docs")
+
         return docs
 
     @staticmethod
     def format_context(docs: List[Dict]) -> str:
-        return "\n\n".join(
-            [f"Doc {i+1} (Score {d['score']:.3f}):\n{d['text']}" for i, d in enumerate(docs)]
-        )
+        # Return the raw text blocks joined so the LLM sees the exact table rows (no truncation).
+        return "\n\n".join([f"Doc {i+1} (Score {d.get('score', 0):.3f}):\n{d.get('text','')}" for i, d in enumerate(docs)])
+
 
     # Add this new helper method to your class (or implement the logic inline)
     def _rewrite_query(self, memory_history: str, current_question: str) -> str:
@@ -157,22 +233,32 @@ class ThinkpalmCosmosRAGmethod2:
         
         # This prompt instructs the LLM to perform the rewriting task.
         rewrite_prompt = f"""
-        You are a query rewriter for a Retrieval-Augmented Generation (RAG) system. 
-        Your task is to rewrite the 'Current User Question' into a single, comprehensive, 
-        standalone search query based on the 'Conversation History'. The output must be 
-        only the rewritten query and nothing else.
+                You are a query rewriter for a Retrieval-Augmented Generation (RAG) system.
+
+        Your goal is to rewrite the 'Current User Question' into a single, self-contained,
+        and contextually complete search query using the 'Conversation History' to fill in
+        missing references.
+
+        Strict Rules:
+        1. Preserve the logical meaning, phrasing, and operators (e.g., “and”, “or”, “/”) exactly as in the user’s question. 
+        - Do NOT replace “or” with “and”, or vice versa.
+        - Do NOT merge multiple conditions unless they are identical in meaning.
+        2. Do NOT infer or generalize beyond the user’s wording — stay faithful to the intent.
+        3. Include relevant context from Conversation History only if it clarifies **what** the user is referring to.
+        4. Output must be a single concise query — no explanations, no extra text.
 
         Example:
-        History: User: What are the benefits of the new HR policy? Assistant: The policy provides flexible PTO and a stipend.
+        History:
+        User: What are the benefits of the new HR policy?
+        Assistant: The policy provides flexible PTO and a stipend.
         Current User Question: What is the stipend amount?
         Rewritten Query: What is the stipend amount for the new HR policy?
-        
+
         Conversation History:
         {memory_history}
-        
+
         Current User Question:
         {current_question}
-        
         Rewritten Query:
         """
         
@@ -186,9 +272,46 @@ class ThinkpalmCosmosRAGmethod2:
     # ASK METHOD (MAIN PIPELINE)
     # ------------------------------------------------------------
     # New (Simplified) ask method structure:
+    def _extract_keywords(self, question: str) -> str | None:
+        """Uses the LLM to extract the exact, canonical policy title for fallback search."""
+        
+        # 🚨 KEY CHANGE: The prompt explicitly asks for the 'EXACT POLICY TITLE'
+        extraction_prompt = f"""
+        You are a policy title extractor. Your task is to identify the single, canonical, and **EXACT POLICY TITLE** corresponding to the user's question, which must be used for a literal database lookup.
+        
+        The extracted title MUST be a complete, literal match for the policy in question.
+        
+        If the question is general (e.g., 'What is the cost?', 'How are you?'), return 'None'.
+
+        Examples (Use these as templates for mapping user intent to exact title):
+        - User: Who approves the Appointment of new directors? -> Output: Appointment/ Removal of Directors/ EOs
+        - User: What is the process for paying a cancellation fee? -> Output: Payment of cancellation fee/ penalty charge
+        - User: What is the travel policy? -> Output: Business Travel
+        - User: What is the cost? -> Output: None
+        
+        User Question:
+        {question}
+        
+        Extracted Keyword (or 'None'):
+        """
+        
+        try:
+            response = self.llm.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": extraction_prompt}],
+                temperature=0.0
+            )
+            keyword = response.choices[0].message.content.strip()
+            # Cleaning the output
+            keyword = keyword.replace('"', '').replace("'", '').split('\n')[0].strip()
+            return keyword if keyword.lower() != 'none' and keyword else None
+        except Exception as e:
+            # Handle exceptions gracefully
+            return None
+
 
     def ask(self, user_id, question):
-        # --- Step 0: Classify the message ---
+        # --- Step 0: Classify the message (No change) ---
         intent = self.llm.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -199,7 +322,7 @@ class ThinkpalmCosmosRAGmethod2:
         classification = intent.choices[0].message.content.lower()
         
         if "small talk" in classification:
-            # Let the LLM respond naturally, but in the corporate knowledge assistant tone
+            # (Small talk handling remains the same)
             small_talk_response = self.llm.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
@@ -221,29 +344,56 @@ class ThinkpalmCosmosRAGmethod2:
             memory.chat_memory.add_ai_message(answer)
             
             return {"answer": answer, "related": False}
-    
-        # --- Step 1 & 2: Get History and Rewrite Query ---
+        
+        # --- Step 1 & 2: Get History and Rewrite Query (No change) ---
         memory = self.get_memory(user_id)
         past_context = memory.load_memory_variables({}).get("history", "")
         if not past_context:
-            # If no history, the original question is the search query
             query_for_retrieval = question
         else:
-            # LLM rewrites the query for optimal semantic search
             query_for_retrieval = self._rewrite_query(past_context, question)
-            
-        print(f"Rewritten Query for Retrieval: {query_for_retrieval}") # Helpful debug
-        
-        # --- Step 3: Embed and Retrieve Documents (RAG) ---
+
+        print(f"[DEBUG] Rewritten Query for Retrieval: {query_for_retrieval}")
+
+        # --- Step 3: Vector Retrieval (No change) ---
+        # Embedding: use the OpenAI embeddings API properly and serialize
         emb = self.llm.embeddings.create(model="text-embedding-3-large", input=query_for_retrieval)
         query_embedding = emb.data[0].embedding
-        
+
         retrieved_docs = self.search_cosmos_documents(query_embedding)
-        context = self.format_context(retrieved_docs)
+
+        # --- Step 4: Dynamic Keyword Fallback (REPLACED HARDCODING) ---
         
-        with open("retrieved_docs.txt", "a") as f: 
-            f.write(f"\n\nQuestion: {query_for_retrieval}\n") 
-            f.write(f"Context:\n{context}\n")
+        # Use the LLM to dynamically get the high-value keyword (e.g., "Appointment/ Removal of Directors")
+        keyword_to_check = self._extract_keywords(question) 
+
+        if keyword_to_check:
+            joined_texts = " ".join([d.get("text", "") for d in retrieved_docs]).lower()
+            
+            # Check if the dynamic keyword is present in the current vector search results (to avoid fallback if successful)
+            if keyword_to_check.lower() not in joined_texts:
+                print(f"[DEBUG] Vector search missed dynamic keyword: '{keyword_to_check}'. Running SQL fallback.")
+                
+                # try a direct keyword search using the dynamically extracted phrase
+                fallback_docs = self._keyword_fallback_search(keyword_to_check)
+                
+                # merge (while keeping previously found docs first)
+                # avoid duplicates by id
+                ids = {d['id'] for d in retrieved_docs}
+                for d in fallback_docs:
+                    if d['id'] not in ids:
+                        retrieved_docs.append(d)
+            else:
+                print(f"[DEBUG] Vector search successfully captured dynamic keyword: '{keyword_to_check}'. Skipping fallback.")
+
+        # --- Step 5: Preparing Context (Modified to include new debug line) ---
+        context = self.format_context(retrieved_docs)
+        print(f"[DEBUG] Retrieved docs count: {len(retrieved_docs)}")
+        
+        # optional: save raw context for debugging
+        with open("retrieved_docs.txt", "a") as f:
+            f.write(f"\n\nQuestion: {query_for_retrieval}\nContext:\n{context}\n")
+        
         
         # --- Step 4: Generate Final Answer ---
         # The final prompt includes everything: the original question, memory, and context.
@@ -253,8 +403,6 @@ class ThinkpalmCosmosRAGmethod2:
 
         prompt = f"""
         Your task is to act as Thinkpalm’s Corporate Knowledge Assistant. Your goal is to provide a single, comprehensive answer to the user's question by synthesizing all relevant facts from the provided 'Document Context' and related data tables.
-
-IMPORTANT: Explicitly list all Authorised Approvers exactly as mentioned in the context (e.g., MOL, BDM, A1). Do NOT omit any approver, even if it seems implied. Ensure the final answer fully reflects the documents.
 
 Instructions:
 
@@ -277,7 +425,10 @@ Instructions:
 9) When multiple departments are involved:
    - Determine responsibility based on the **most specific match** (e.g., FDD → Business Planning Dept.).
    - Mention all relevant departments **only if their responsibilities overlap**.
-10)Instruction for multiple costs:
+10) From the provided Document Context, IDENTIFY the exact Authorised Approver tokens and Reviewers for the given User Question.
+You MUST NOT paraphrase them; return them EXACTLY as they appear in the Document Context (for example: MOL, BDM, A1, A2, GPM, etc).
+
+11)Instruction for multiple costs:
 
     1.  **Disaggregate Costs:** Do NOT aggregate the costs. Treat each item (New System: US$58,000 and Maintenance Contract: US$38,000) as a separate transaction for the purpose of finding its individual criteria.
     2.  **Identify Categories:** Determine the two distinct approval categories and their specific thresholds:
@@ -307,7 +458,7 @@ Instructions:
         """
         
         response = self.llm.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2
         )
