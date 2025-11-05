@@ -90,7 +90,7 @@ class ThinkpalmCosmosRAGmethod2:
         """Create or retrieve summary memory per user."""
         if user_id not in self.memory_store:
             self.memory_store[user_id] = ConversationSummaryMemory(
-                llm=ChatOpenAI(model="gpt-4o-mini", temperature=0),
+                llm=ChatOpenAI(model="gpt-4.1", temperature=0),
                 return_messages=True
             )
         return self.memory_store[user_id]
@@ -284,7 +284,7 @@ class ThinkpalmCosmosRAGmethod2:
         """
         
         response = self.llm.chat.completions.create(
-            model="gpt-4o-mini", # Use a fast, inexpensive model for this step
+            model="gpt-4.1", # Use a fast, inexpensive model for this step
             messages=[{"role": "user", "content": rewrite_prompt}],
             temperature=0.0 # Set low temperature for factual rewriting
         )
@@ -318,7 +318,7 @@ class ThinkpalmCosmosRAGmethod2:
         
         try:
             response = self.llm.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4.1",
                 messages=[{"role": "user", "content": extraction_prompt}],
                 temperature=0.0
             )
@@ -336,39 +336,46 @@ class ThinkpalmCosmosRAGmethod2:
     
     def _is_small_talk(self, question: str) -> bool:
         """
-        Classifies a question as small talk using deterministic rules and keyword matching,
-        now robust against missing spaces in common phrases.
+        Classifies a question as small talk using deterministic rules.
+        This version is strict, requiring the small talk phrase to dominate the query.
         """
         
         question_lower = question.lower().strip()
+        question_words = question_lower.split()
         
-        # Define common small talk keywords and their single-word equivalents (if applicable)
-        GREETINGS = ["hello", "hi", "hey", "good morning", "good evening", "greetings"]
+        # 1. Define common small talk keywords
+        GREETINGS = ["hello",'hloo', "hi", "hey", "good morning", "good evening", "greetings"]
         INQUIRIES = ["how are you", "what's up", "what are you doing", "who are you"]
         AFFIRMATIONS = ["thank you", "thanks", "i appreciate it", "bye", "goodbye"]
         
-        # Consolidate all phrases to check
-        all_phrases = GREETINGS + INQUIRIES + AFFIRMATIONS
-        
-        # Add squashed versions of multi-word phrases for robustness (e.g., "thankyou", "howareyou")
-        squashed_phrases = []
-        for phrase in all_phrases:
-            if ' ' in phrase:
-                squashed_phrases.append(phrase.replace(' ', '').replace("'", ""))
-                
-        # Combine the full list for checking
+        # Consolidate phrases, including squashed versions (e.g., "thankyou")
+        all_phrases = GREETINGS + AFFIRMATIONS + INQUIRIES
+        squashed_phrases = [p.replace(' ', '').replace("'", "") for p in all_phrases if ' ' in p]
         all_checks = all_phrases + squashed_phrases
         
-        # 1. Simple Keyword Match (covers most greetings, thanks, and squashed versions)
+        # 2. Iteratively check for substring matches with strict dominance rules
         for phrase in all_checks:
             if phrase in question_lower:
-                return True
+                phrase_len = len(phrase.split())
+                question_len = len(question_words)
+                
+                # A. Exact Match (The most definitive check)
+                if phrase == question_lower:
+                    return True
+                
+                # B. Dominance Check: The small talk phrase is nearly the entire query (e.g., 1-2 extra words)
+                # Example: "Hi there" (2 words) or "Thank you so much" (4 words)
+                if question_len <= phrase_len + 2:
+                    return True
 
-        # 2. Heuristic: Very short message (refine this as needed)
-        if len(question_lower.split()) <= 2 and len(question_lower) < 15:
-            # If the short message contains common small talk words, classify as small talk.
-            if any(word in question_lower for word in GREETINGS + ["thanks", "bye"]):
-                return True
+                # C. Boundary Check for leading/trailing small talk
+                # This catches "Hi, can you tell me the policy?" only if the policy part is also short (max 5 words)
+                if (question_lower.startswith(phrase) or question_lower.endswith(phrase)) and question_len <= 5:
+                    return True
+                    
+        # 3. Heuristic: Final catch for very short, non-standard simple queries (e.g., "Thanks")
+        if len(question_words) <= 2 and any(word in question_lower for word in GREETINGS + ["thanks", "bye"]):
+            return True
         
         return False
     def _generate_small_talk_response(self, question: str) -> str:
@@ -395,6 +402,8 @@ class ThinkpalmCosmosRAGmethod2:
         
         # --- Step 0: Classify the message (Using the efficient _is_small_talk) ---
         is_small_talk = self._is_small_talk(question)
+        print("is_small_talk:", is_small_talk)
+        # return
         
         if is_small_talk:
             # --- Small Talk Handling (REPLACED LLM RESPONSE GENERATION) ---
@@ -404,8 +413,8 @@ class ThinkpalmCosmosRAGmethod2:
             
             # Update memory
             memory = self.get_memory(user_id)
-            memory.chat_memory.add_user_message(question)
-            memory.chat_memory.add_ai_message(answer)
+            # memory.chat_memory.add_user_message(question)
+            # memory.chat_memory.add_ai_message(answer)
             
             return {"answer": answer, "related": False}
         
