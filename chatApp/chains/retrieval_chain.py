@@ -1,26 +1,17 @@
 import os
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.runnables import RunnablePassthrough
-# from langchain.chains import ConversationalRetrievalChain
-# from langchain.memory import ConversationBufferMemory
-# # Depending on your chosen LLM:
-# from langchain_groq import ChatGroq
-# from langchain_openai import ChatOpenAI
-# from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-# from langchain.schema import HumanMessage, AIMessage
+# from langchain_core.prompts import ChatPromptTemplate
+# from langchain_core.output_parsers import StrOutputParser
+# from langchain_core.runnables import RunnablePassthrough
+# import numpy as np
+
 from dotenv import load_dotenv
 load_dotenv()
-
-
-
+import json
+import random
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from openai import OpenAI
 from datetime import datetime
 import os
-from sklearn.metrics.pairwise import cosine_similarity
-
-from langchain_classic.memory import ConversationBufferMemory
 
 # memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 # memory.save_context({"input": "Hi"}, {"output": "Hello there!"})
@@ -32,9 +23,9 @@ from datetime import datetime
 from typing import List, Dict
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from openai import OpenAI
-from sklearn.metrics.pairwise import cosine_similarity
 from langchain_classic.memory import ConversationSummaryMemory
 from langchain_openai import ChatOpenAI
+
 
 
 class ThinkpalmCosmosRAGmethod2:
@@ -56,6 +47,26 @@ class ThinkpalmCosmosRAGmethod2:
         self.memory_store = {}
         self.top_k = 5
         self.last_question_cache = {}
+        
+        self.SMALL_TALK_RESPONSES = {
+        "greeting": [
+            "Hello! I am Thinkpalm's Corporate Knowledge Assistant. How may I be of assistance with your business query?",
+            "Good day. Thank you for reaching out. I'm ready to help with any policy or knowledge questions you may have.",
+            "Hi there. I trust you are having a productive day. Please let me know your question.",
+            "Welcome! I am here to provide accurate and professional support. What information are you seeking?",
+        ],
+        "thanks": [
+            "You are most welcome. Is there anything else I can clarify or retrieve for you?",
+            "My pleasure. Do not hesitate to ask if further information is required.",
+            "Glad to be of assistance. Have a productive day.",
+        ],
+        "who_are_you": [
+            "I am Thinkpalm's Corporate Knowledge Assistant, designed to provide information and policy details from our internal knowledge base.",
+        ],
+        "generic_positive": [
+            "That is kind of you to say. I am functioning optimally and ready to address your corporate queries.",
+        ]
+    }
 
     # ------------------------------------------------------------
     # MEMORY MANAGEMENT
@@ -64,7 +75,7 @@ class ThinkpalmCosmosRAGmethod2:
         """Create or retrieve summary memory per user."""
         if user_id not in self.memory_store:
             self.memory_store[user_id] = ConversationSummaryMemory(
-                llm=ChatOpenAI(model="gpt-4o-mini", temperature=0),
+                llm=ChatOpenAI(model="gpt-4.1", temperature=0),
                 return_messages=True
             )
         return self.memory_store[user_id]
@@ -126,7 +137,13 @@ class ThinkpalmCosmosRAGmethod2:
     # RAG SEARCH
     # ------------------------------------------------------------
     def search_cosmos_documents(self, query_embedding):
-        embedding_str = str(query_embedding).replace(" ", "")
+        """
+        Query Cosmos using the VectorDistance API. Ensure the embedding is JSON-serialized
+        so Cosmos receives a correct array. Returns a list of docs with id, text, metadata, score.
+        """
+        # Use json.dumps to produce a properly formatted array literal
+        embedding_str = json.dumps(query_embedding)
+
         query = f"""
         SELECT TOP {self.top_k}
             c.id, c.text, c.metadata,
@@ -134,7 +151,12 @@ class ThinkpalmCosmosRAGmethod2:
         FROM c
         ORDER BY VectorDistance(c.vector_embedding, {embedding_str})
         """
-        results = self.container.query_items(query=query, enable_cross_partition_query=True)
+        try:
+            results = list(self.container.query_items(query=query, enable_cross_partition_query=True))
+        except Exception as e:
+            print(f"Error running vector query: {e}")
+            results = []
+
         docs = []
         for d in results:
             docs.append({
@@ -143,13 +165,74 @@ class ThinkpalmCosmosRAGmethod2:
                 "metadata": d.get("metadata", {}),
                 "score": float(d.get("score", 0))
             })
+        # debug
+        print(f"[DEBUG] search_cosmos_documents returned {len(docs)} docs (top_k={self.top_k})")
+        return docs
+
+    def _keyword_fallback_search(self, keyword):
+
+        """
+
+        If vector retrieval misses the exact table row, use a simple keyword substring search
+
+        against the stored documents in Cosmos (or text index). This helps guarantee we get
+
+        explicit lines like "Appointment/ Removal of Directors/ EOs".
+
+        """
+
+        # escape single quotes in keyword for SQL
+
+        safe_kw = keyword.replace("'", "''")
+
+        query = f"""
+
+        SELECT TOP 20 c.id, c.text, c.metadata
+
+        FROM c
+
+        WHERE CONTAINS(c.text, '{safe_kw}')
+
+        """
+
+        try:
+
+            results = list(self.container.query_items(query=query, enable_cross_partition_query=True))
+
+        except Exception as e:
+
+            print(f"Keyword fallback search error: {e}")
+
+            results = []
+
+
+
+        docs = []
+
+        for d in results:
+
+            docs.append({
+
+                "id": d.get("id"),
+
+                "text": d.get("text", ""),
+
+                "metadata": d.get("metadata", {}),
+
+                "score": 0.0
+
+            })
+
+        print(f"[DEBUG] _keyword_fallback_search('{keyword}') found {len(docs)} docs")
+
         return docs
 
     @staticmethod
     def format_context(docs: List[Dict]) -> str:
-        return "\n\n".join(
-            [f"Doc {i+1} (Score {d['score']:.3f}):\n{d['text']}" for i, d in enumerate(docs)]
-        )
+        """
+        Format retrieved docs for LLM prompt — removes debug doc labels so model doesn’t cite “Doc X”.
+        """
+        return "\n\n".join(d.get("text", "") for d in docs)
 
     # Add this new helper method to your class (or implement the logic inline)
     def _rewrite_query(self, memory_history: str, current_question: str) -> str:
@@ -157,27 +240,37 @@ class ThinkpalmCosmosRAGmethod2:
         
         # This prompt instructs the LLM to perform the rewriting task.
         rewrite_prompt = f"""
-        You are a query rewriter for a Retrieval-Augmented Generation (RAG) system. 
-        Your task is to rewrite the 'Current User Question' into a single, comprehensive, 
-        standalone search query based on the 'Conversation History'. The output must be 
-        only the rewritten query and nothing else.
+                You are a query rewriter for a Retrieval-Augmented Generation (RAG) system.
+
+        Your goal is to rewrite the 'Current User Question' into a single, self-contained,
+        and contextually complete search query using the 'Conversation History' to fill in
+        missing references.
+
+        Strict Rules:
+        1. Preserve the logical meaning, phrasing, and operators (e.g., “and”, “or”, “/”) exactly as in the user’s question. 
+        - Do NOT replace “or” with “and”, or vice versa.
+        - Do NOT merge multiple conditions unless they are identical in meaning.
+        2. Do NOT infer or generalize beyond the user’s wording — stay faithful to the intent.
+        3. Include relevant context from Conversation History only if it clarifies **what** the user is referring to.
+        4. Output must be a single concise query — no explanations, no extra text.
 
         Example:
-        History: User: What are the benefits of the new HR policy? Assistant: The policy provides flexible PTO and a stipend.
+        History:
+        User: What are the benefits of the new HR policy?
+        Assistant: The policy provides flexible PTO and a stipend.
         Current User Question: What is the stipend amount?
         Rewritten Query: What is the stipend amount for the new HR policy?
-        
+
         Conversation History:
         {memory_history}
-        
+
         Current User Question:
         {current_question}
-        
         Rewritten Query:
         """
         
         response = self.llm.chat.completions.create(
-            model="gpt-4o-mini", # Use a fast, inexpensive model for this step
+            model="gpt-4.1", # Use a fast, inexpensive model for this step
             messages=[{"role": "user", "content": rewrite_prompt}],
             temperature=0.0 # Set low temperature for factual rewriting
         )
@@ -186,65 +279,310 @@ class ThinkpalmCosmosRAGmethod2:
     # ASK METHOD (MAIN PIPELINE)
     # ------------------------------------------------------------
     # New (Simplified) ask method structure:
+    def _extract_keywords(self, question: str) -> str | None:
+        """Uses the LLM to extract the exact, canonical policy title for fallback search."""
+        
+        # 🚨 KEY CHANGE: The prompt explicitly asks for the 'EXACT POLICY TITLE'
+        extraction_prompt = f"""
+        You are a policy title extractor. Your task is to identify the single, canonical, and **EXACT POLICY TITLE** corresponding to the user's question, which must be used for a literal database lookup.
+        
+        The extracted title MUST be a complete, literal match for the policy in question.
+        
+        If the question is general (e.g., 'What is the cost?', 'How are you?'), return 'None'.
+
+        Examples (Use these as templates for mapping user intent to exact title):
+        - User: Who approves the Appointment of new directors? -> Output: Appointment/ Removal of Directors/ EOs
+        - User: What is the process for paying a cancellation fee? -> Output: Payment of cancellation fee/ penalty charge
+        - User: What is the travel policy? -> Output: Business Travel
+        - User: What is the cost? -> Output: None
+        
+        User Question:
+        {question}
+        
+        Extracted Keyword (or 'None'):
+        """
+        
+        try:
+            response = self.llm.chat.completions.create(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": extraction_prompt}],
+                temperature=0.0
+            )
+            keyword = response.choices[0].message.content.strip()
+            # Cleaning the output
+            keyword = keyword.replace('"', '').replace("'", '').split('\n')[0].strip()
+            return keyword if keyword.lower() != 'none' and keyword else None
+        except Exception as e:
+            # Handle exceptions gracefully
+            return None
+
+    
+# Define these as class attributes in your Knowledge Assistant class
+# or as constants accessible by the method.
+    
+    def _is_small_talk(self, question: str) -> bool:
+        """
+        Classifies a question as small talk using deterministic rules.
+        This version is strict, requiring the small talk phrase to dominate the query.
+        """
+        
+        question_lower = question.lower().strip()
+        question_words = question_lower.split()
+        
+        # 1. Define common small talk keywords
+        GREETINGS = ["hello",'hloo', "hi", "hey", "good morning", "good evening", "greetings"]
+        INQUIRIES = ["how are you", "what's up", "what are you doing", "who are you"]
+        AFFIRMATIONS = ["thank you", "thanks", "i appreciate it", "bye", "goodbye"]
+        
+        # Consolidate phrases, including squashed versions (e.g., "thankyou")
+        all_phrases = GREETINGS + AFFIRMATIONS + INQUIRIES
+        squashed_phrases = [p.replace(' ', '').replace("'", "") for p in all_phrases if ' ' in p]
+        all_checks = all_phrases + squashed_phrases
+        
+        # 2. Iteratively check for substring matches with strict dominance rules
+        for phrase in all_checks:
+            if phrase in question_lower:
+                phrase_len = len(phrase.split())
+                question_len = len(question_words)
+                
+                # A. Exact Match (The most definitive check)
+                if phrase == question_lower:
+                    return True
+                
+                # B. Dominance Check: The small talk phrase is nearly the entire query (e.g., 1-2 extra words)
+                # Example: "Hi there" (2 words) or "Thank you so much" (4 words)
+                if question_len <= phrase_len + 2:
+                    return True
+
+                # C. Boundary Check for leading/trailing small talk
+                # This catches "Hi, can you tell me the policy?" only if the policy part is also short (max 5 words)
+                if (question_lower.startswith(phrase) or question_lower.endswith(phrase)) and question_len <= 5:
+                    return True
+                    
+        # 3. Heuristic: Final catch for very short, non-standard simple queries (e.g., "Thanks")
+        if len(question_words) <= 2 and any(word in question_lower for word in GREETINGS + ["thanks", "bye"]):
+            return True
+        
+        return False
+    def _generate_small_talk_response(self, question: str) -> str:
+        """
+        Selects a deterministic, professional response based on question type.
+        """
+        question_lower = question.lower().strip()
+        
+        # Check what kind of small talk it is (based on the same logic as _is_small_talk)
+        if any(phrase in question_lower for phrase in ["hello", "hi", "hey", "good morning", "greetings"]):
+            key = "greeting"
+        elif any(phrase in question_lower for phrase in ["thank you", "thanks", "i appreciate it"]):
+            key = "thanks"
+        elif any(phrase in question_lower for phrase in ["who are you", "what is your name"]):
+            key = "who_are_you"
+        else:
+            # Default for other simple small talk (like "how are you")
+            key = "generic_positive" 
+
+        # Select a random response from the category
+        return random.choice(self.SMALL_TALK_RESPONSES.get(key, self.SMALL_TALK_RESPONSES['greeting']))
+    def _tokenize_search_hits(self, cand, docs):
+        tok = cand.lower()
+        hits = []
+        for d in docs:
+            if tok in d.get("text","").lower():
+                hits.append(d)
+        return hits
+    
+    def deduplicate_docs(self, retrieved_docs):
+        seen_texts = set()
+        unique_docs = []
+        for d in retrieved_docs:
+            text_norm = d.get("text", "").strip().lower()
+            if text_norm not in seen_texts:
+                seen_texts.add(text_norm)
+                unique_docs.append(d)
+        return unique_docs
 
     def ask(self, user_id, question):
-        # --- Step 0: Classify the message ---
-        intent = self.llm.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Classify if the message is small talk or a business query."},
-                {"role": "user", "content": question}
-            ]
-        )
-        classification = intent.choices[0].message.content.lower()
         
-        if "small talk" in classification:
-            # Let the LLM respond naturally, but in the corporate knowledge assistant tone
-            small_talk_response = self.llm.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": (
-                        "You are Thinkpalm's Corporate Knowledge Assistant. "
-                        "Even when replying to casual greetings or small talk, "
-                        "maintain a professional, courteous, and helpful tone. "
-                        "Respond in a friendly but corporate style."
-                    )},
-                    {"role": "user", "content": question}
-                ],
-                temperature=0.7
-            )
-            answer = small_talk_response.choices[0].message.content.strip()
-            
+        # --- Step 0: Classify the message (Using the efficient _is_small_talk) ---
+        is_small_talk = self._is_small_talk(question)
+        print("is_small_talk:", is_small_talk)
+        
+        if is_small_talk:
+            # --- Small Talk Handling ---
+            answer = self._generate_small_talk_response(question)
+
             # Update memory
             memory = self.get_memory(user_id)
             memory.chat_memory.add_user_message(question)
             memory.chat_memory.add_ai_message(answer)
             
             return {"answer": answer, "related": False}
-    
-        # --- Step 1 & 2: Get History and Rewrite Query ---
+        
+        # --- Step 1: Retrieve memory and rewrite query if needed ---
         memory = self.get_memory(user_id)
         past_context = memory.load_memory_variables({}).get("history", "")
-        if not past_context:
-            # If no history, the original question is the search query
-            query_for_retrieval = question
-        else:
-            # LLM rewrites the query for optimal semantic search
+
+        # --- Step 2: Extract canonical keyword (for better retrieval precision) ---
+        keyword_to_check = self._extract_keywords(question)  # e.g., "Novation of the contract"
+        print(f"[DEBUG] Extracted canonical keyword: {keyword_to_check}")
+
+        # Build the retrieval query (including conversation history if any)
+        if past_context:
             query_for_retrieval = self._rewrite_query(past_context, question)
-            
-        print(f"Rewritten Query for Retrieval: {query_for_retrieval}") # Helpful debug
-        
-        # --- Step 3: Embed and Retrieve Documents (RAG) ---
+        else:
+            query_for_retrieval = question
+
+        # Force include canonical keyword to improve recall of specific table rows
+        if keyword_to_check:
+            query_for_retrieval = f"{keyword_to_check} {query_for_retrieval}"
+            print(f"[DEBUG] Forcing keyword into retrieval query: {keyword_to_check}")
+
+        print(f"[DEBUG] Final Query for Retrieval: {query_for_retrieval}")
+
+        # --- Step 3: Vector Retrieval ---
+        # --- Step 3: Vector Retrieval (No change in top-level flow) ---
+        # Embedding: use the OpenAI embeddings API properly and serialize
         emb = self.llm.embeddings.create(model="text-embedding-3-large", input=query_for_retrieval)
         query_embedding = emb.data[0].embedding
-        
+
+        # initial vector search (based on the rewritten query)
         retrieved_docs = self.search_cosmos_documents(query_embedding)
+
+        # --- Step 4: Dynamic Keyword + Subtype Extraction & Robust Fallback ---
+        # Use the LLM to extract the high-value canonical keyword (e.g., "Novation of Time Charter Contract")
+        keyword_to_check = self._extract_keywords(question)  # existing method you have
+        # New helper: extract specific subtype/entity (Time Charter, P&I, FDD, IT, etc.)
+        subtype = None
+        try:
+            # Try a quick deterministic entity detection using regex/keywords first to avoid cost
+            candidate_subtypes = ["time charter", "time charterer", "charter", "novation", "p&i", "fdd", "cli", "it", "it-related", "service agreement"]
+            q_lower = (question + " " + (past_context or "")).lower()
+            for cand in candidate_subtypes:
+                if cand in q_lower:
+                    subtype = cand
+                    break
+            # If no subtype found heuristically, ask the LLM for a single subtype label
+            if not subtype:
+                subtype_prompt = (
+                    "Extract a single canonical subtype or domain-word from the question if present (e.g. 'Time Charter', 'P&I', 'IT', 'Service agreement'). "
+                    "Return 'None' if no subtype is present.\n\nQuestion:\n" + question
+                )
+                resp = self.llm.chat.completions.create(
+                    model="gpt-4.1",
+                    messages=[{"role": "user", "content": subtype_prompt}],
+                    temperature=0.0
+                )
+                subtype = resp.choices[0].message.content.strip().split('\n')[0]
+                if subtype.lower() in {"none", ""}:
+                    subtype = None
+                else:
+                    subtype = subtype
+        except Exception as e:
+            print(f"[DEBUG] subtype extraction error: {e}")
+            subtype = None
+
+        # Build a list of fallback keyword variations to try (ordered)
+        fallback_candidates = []
+        if keyword_to_check:
+            keyword_clean = keyword_to_check.strip()
+            fallback_candidates.append(keyword_clean)
+            # simplified: remove filler words like 'of the', 'of'
+            simplified = keyword_clean.replace(" of the ", " ").replace(" of ", " ").strip()
+            if simplified and simplified != keyword_clean:
+                fallback_candidates.append(simplified)
+            # also try last token segments (e.g., "Time Charter Contract" -> "Time Charter")
+            parts = keyword_clean.split()
+            if len(parts) > 2:
+                fallback_candidates.append(" ".join(parts[-3:]))  # last 3 words
+                fallback_candidates.append(" ".join(parts[-2:]))  # last 2 words
+        # Always prefer subtype if present
+        if subtype:
+            fallback_candidates.insert(0, subtype)
+
+        # De-duplicate while preserving order
+        seen_fc = set()
+        fallback_candidates = [c for c in fallback_candidates if c and not (c in seen_fc or seen_fc.add(c))]
+
+        # If we already did vector search, check if any candidate substring appears in retrieved docs
+        joined_texts = " ".join([d.get("text", "").lower() for d in retrieved_docs])
+        missing_candidates = [c for c in fallback_candidates if c and c.lower() not in joined_texts]
+
+        # If any fallback candidates are missing, run progressive SQL fallback searches (CONTAINS)
+        if missing_candidates:
+            print(f"[DEBUG] Vector search did not include these candidates in top docs: {missing_candidates}")
+            for cand in missing_candidates:
+                # SQL safe-escape single quotes
+                safe_kw = cand.replace("'", "''")
+                # Use CONTAINS to match substrings (more relaxed than exact literal)
+                fallback_query = f"""
+                    SELECT TOP 20 c.id, c.text, c.metadata
+                    FROM c
+                    WHERE CONTAINS(LOWER(c.text), '{safe_kw.lower()}')
+                """
+                try:
+                    fallback_results = list(self.container.query_items(query=fallback_query, enable_cross_partition_query=True))
+                except Exception as e:
+                    print(f"[DEBUG] fallback SQL for '{cand}' error: {e}")
+                    fallback_results = []
+                # Add non-duplicate docs to retrieved_docs (preserve earlier docs first)
+                existing_ids = {d['id'] for d in retrieved_docs}
+                added = 0
+                for d in fallback_results:
+                    if d.get("id") not in existing_ids:
+                        retrieved_docs.append({"id": d.get("id"), "text": d.get("text", ""), "metadata": d.get("metadata", {}), "score": 0.0})
+                        existing_ids.add(d.get("id"))
+                        added += 1
+                print(f"[DEBUG] Fallback search for '{cand}' added {added} docs")
+
+            # If still zero matches for all fallback candidates, try a relaxed substring search on keyword tokens
+            if all(len(self._tokenize_search_hits(cand, retrieved_docs)) == 0 for cand in fallback_candidates):
+                print("[DEBUG] No fallback docs found with CONTAINS; trying relaxed token search on key tokens.")
+                tokens = []
+                for cand in fallback_candidates:
+                    tokens += [t for t in cand.split() if len(t) > 2]
+                tokens = list(dict.fromkeys(tokens))[:6]  # unique tokens, limit to 6
+                for tok in tokens:
+                    safe_tok = tok.replace("'", "''").lower()
+                    token_query = f"""
+                        SELECT TOP 10 c.id, c.text, c.metadata
+                        FROM c
+                        WHERE CONTAINS(LOWER(c.text), '{safe_tok}')
+                    """
+                    try:
+                        token_res = list(self.container.query_items(query=token_query, enable_cross_partition_query=True))
+                    except Exception as e:
+                        token_res = []
+                    existing_ids = {d['id'] for d in retrieved_docs}
+                    for d in token_res:
+                        if d.get("id") not in existing_ids:
+                            retrieved_docs.append({"id": d.get("id"), "text": d.get("text", ""), "metadata": d.get("metadata", {}), "score": 0.0})
+                            existing_ids.add(d.get("id"))
+
+
+        retrieved_docs = self.deduplicate_docs(retrieved_docs)
+        # --- Step 5: Preparing Context (Improved debug block) ---
         context = self.format_context(retrieved_docs)
-        
-        with open("retrieved_docs.txt", "a") as f: 
-            f.write(f"\n\nQuestion: {query_for_retrieval}\n") 
-            f.write(f"Context:\n{context}\n")
-        
+        print(f"[DEBUG] Retrieved docs count (post-fallback merge): {len(retrieved_docs)}")
+
+        # Print top few retrieved document snippets for verification
+        for i, d in enumerate(retrieved_docs[:6]):
+            preview = d.get("text", "").replace("\n", " ").strip()[:180]
+            print(f"[DEBUG] Doc {i+1} | Score: {d.get('score', 0):.3f} | Snippet: {preview}...")
+
+        # Save full retrieval trace for external inspection
+        with open("Verification_retrieved_docs.txt", "a", encoding="utf-8") as f:
+            f.write(f"\n\n==============================\n")
+            f.write(f"Timestamp: {datetime.utcnow().isoformat()}\n")
+            f.write(f"Question: {question}\n")
+            f.write(f"Rewritten Query: {query_for_retrieval}\n")
+            f.write(f"Extracted Keyword: {keyword_to_check}\n")
+            f.write(f"Extracted Subtype: {subtype}\n")
+            f.write(f"Final Fallback Candidates: {fallback_candidates}\n")
+            f.write(f"Retrieved Docs: {len(retrieved_docs)}\n\n")
+            for i, d in enumerate(retrieved_docs):
+                f.write(f"Doc {i+1} (Score {d.get('score', 0):.3f}):\n{d.get('text','')}\n\n")
+            f.write("==============================\n")
+            
         # --- Step 4: Generate Final Answer ---
         # The final prompt includes everything: the original question, memory, and context.
         # We now trust the memory + LLM to use the best information.
@@ -252,62 +590,118 @@ class ThinkpalmCosmosRAGmethod2:
 # Do not summarize or interpret — copy the exact relevant block only.
 
         prompt = f"""
-        Your task is to act as Thinkpalm’s Corporate Knowledge Assistant. Your goal is to provide a single, comprehensive answer to the user's question by synthesizing all relevant facts from the provided 'Document Context' and related data tables.
+        You are **Thinkpalm’s Corporate Knowledge Assistant**. Your task is to generate a **precise, complete, and policy-accurate** answer to the user’s question using **only** the information in the 'Document Context' and related policy tables.
 
-IMPORTANT: Explicitly list all Authorised Approvers exactly as mentioned in the context (e.g., MOL, BDM, A1). Do NOT omit any approver, even if it seems implied. Ensure the final answer fully reflects the documents.
+        ==============================
+        ### CORE INSTRUCTIONS
+        ==============================
 
-Instructions:
+        1. **Answer directly and decisively** — begin with a clear conclusion that addresses the user’s question (do not restate the question).
 
-1) Directly addresses the user’s question and provides a clear conclusion.
+        2. **Preserve every essential policy detail** from the Document Context:
+        - Always include: **Authorised Approver(s)**, **Co-Management Department(s)** (if any), **Deliberation**, **Report**, **Review**, and **CC** if they exist.  
+        - Use the **exact tokens** from the document (e.g., “A1”, “BDM”, “MM”, “Email”, “GPM”, “AF”, “BS”).  
+        - Do **not** summarize, rename, or paraphrase them.
 
-2) Includes all relevant supporting details from the provided context — do not omit important nuances, exceptions, or conditions and important details such as authorisers,review , reporting, department or management (if mentioned )
+        3. **Integrate related context cohesively** — when multiple clauses or table rows refer to the same action (e.g., “Novation”, “Amendment”, “Cancellation”), merge their logic into a single, coherent answer.
 
-3) Avoids copying the context verbatim — instead, paraphrase fluently while preserving the meaning.
+        4. **Handle exceptions and nuances explicitly.**  
+        Example: include phrases like “subject to GPM review”, “requires MM email report”, or “HOD to determine importance” exactly as stated.
 
-4) Keeps the explanation concise and logically ordered, but not at the cost of losing essential information.
+        5. **No filler or speculation.**  
+        Only return factual statements that can be traced to the Document Context.
 
-5) When multiple context points relate to the question, integrate them cohesively (don’t list separately).
+        ==============================
+        ### NOVATION / AMENDMENT / CANCELLATION RULES
+        ==============================
 
-6) If there are exceptions, authority levels, or conditions, explicitly mention them.
+        6. If the question relates to **Novation**, **Amendment**, or **Cancellation**:
+        - Identify and use the *exact policy title* from the Document Context.  
+        - Include all associated approvals, deliberations, and reviews.  
+        - If the clause includes department co-management (e.g., AF, BS) or duration-based rules (e.g., “5 years or more”), list them precisely.
+        - If stated, include “GPM HOD decides whether it is Important or Others” **verbatim**.
 
-7) End with a final conclusion sentence that answers the question clearly and decisively.
-8) If the question or context mentions a subtype (e.g., CLI/FDD, DTH, TCL, etc.),
-   identify and include the department or rule specifically associated with that subtype,
-   even if another department handles related general cases.
-9) When multiple departments are involved:
-   - Determine responsibility based on the **most specific match** (e.g., FDD → Business Planning Dept.).
-   - Mention all relevant departments **only if their responsibilities overlap**.
-10)Instruction for multiple costs:
+        ==============================
+        ### DEPARTMENT & SUBTYPE LOGIC
+        ==============================
 
-    1.  **Disaggregate Costs:** Do NOT aggregate the costs. Treat each item (New System: US$58,000 and Maintenance Contract: US$38,000) as a separate transaction for the purpose of finding its individual criteria.
-    2.  **Identify Categories:** Determine the two distinct approval categories and their specific thresholds:
-        * US$58,000 for a new system is classified as **"Acquisition, disposal of IT related fixed assets."**
-        * US$38,000 for a maintenance service contract is classified as **"IT-related service agreements."**
-    3.  **Extract All Details:** For each transaction, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, etc.) from the Document Context that matches the applicable threshold.
-    4.  **Final Rule Application:** State the final business rule that governs the submission when two different criteria apply.
+        7. If the question or context mentions a **subtype** (e.g., CLI, FDD, DTH, TCL):
+        - Identify and include the **specific department** responsible for that subtype, even if another department handles broader or related categories.  
+        - Example mappings:
+            - “FDD”, “TCL”, “DTH” → Business Planning Department  
+            - “P&I (General)” → Ship Management Department  
 
+        8. When multiple departments appear:
+        - Apply the **most specific rule** (the subtype’s department takes precedence).  
+        - Mention both departments only if the Document Context shows overlapping responsibilities.
 
-    5. Output Format for multiple costs:compose the answer using this two-part structure, followed by the final decision rule. The output must be concise and based **ONLY** on the provided Document Context.
+        ==============================
+        ### COST-RELATED DECISIONS
+        ==============================
 
-        A) For the [First Transaction Category]...** (State the applicable threshold and full criteria extracted from the context.)
+        9. For multi-cost or multi-item questions, follow these rules:
 
-        B) For the [Second Transaction Category]...** (State the applicable threshold and full criteria extracted from the context.)
+            a. **Treat each category separately:** For each transaction category (e.g., Implementation, Maintenance), sum all relevant amounts across sub-allocations (MCT, UNIX, subsidiaries, etc.) to determine the total cost for that category. Do NOT separate by internal allocations.
 
-        
+            b. **Identify Categories:** Determine the distinct approval categories and their specific thresholds based on the total category amount.
+                * Implementation / New System → "Acquisition, disposal of IT related fixed assets"
+                * Maintenance / Service Contract → "IT-related service agreements"
+
+            c. **Extract All Details:** For each category, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, etc.) from the Document Context that matches the applicable threshold.
+
+            d. **Final Rule Application:** State the final business rule that governs the submission based on total category amounts.
+
+            e. **Output Format for Multiple Categories:**
+                A) For [First Transaction Category] — [total amount + approval details].  
+                B) For [Second Transaction Category] — [total amount + approval details].  
+                Then add a short **“Conclusion”** explaining the overall rule.  
+        ==============================
+        ### CONTEXTUAL FILTERING RULES
+        ==============================
+
+        10. If the question explicitly mentions a **policy year** (e.g., “Policy Year 2025”):
+            - Interpret it as referring to the **annual plan** for that policy year.  
+            - Only include approval criteria applicable to the annual plan.  
+            - **Exclude unrelated categories** like “Important” or “Others” unless explicitly required by the question.
+
+        11. If a **policy year** is not specified, apply general approval criteria relevant to the subject matter.
+
+        ==============================
+        ### STRUCTURE & OUTPUT STYLE
+        ==============================
+
+        12. Structure your answer as follows:
+        - **Opening Summary:** One clear sentence answering the question directly.  
+        - **Detailed Breakdown:** Use numbered or bulleted structure to present key facts (departments, approvers, thresholds, deliberation/review, etc.).  
+        - **Conclusion:** End with a decisive sentence summarizing the applicable rule or final action required.
+
+        13. Maintain a professional, factual tone.  
+            Avoid duplication, long-winded explanations, or internal references like “Doc 1” or “Page 17”.
+
+        ==============================
+        ### INPUT CONTEXT
+        ==============================
+
         Conversation History:
         {past_context}
-        
+
         Document Context:
         {context}
-        
+
         User Question:
-        {question} # Use the ORIGINAL question here, as the final answer must address it.
-        
+        {question}
+
+        ==============================
+        ### OUTPUT
+        ==============================
+
         Answer:
         """
+
+
         
         response = self.llm.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.2
         )
@@ -318,7 +712,8 @@ Instructions:
         memory.chat_memory.add_ai_message(answer)
         self.save_chat_message(user_id, question, answer)
         # self.last_question_cache[user_id] = question # <<< Remove this line, as it's no longer needed
-        
+        with open("Verification_retrieved_docs.txt", "a") as f:
+            f.write(f"\n\nAnswer\n==========================\n{answer}\n\n")
         return {"answer": answer, "related": bool(past_context)} # 'related' is now simply based on whether a history exists
         
 

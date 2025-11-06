@@ -7,17 +7,14 @@
 langchain
 langchain-core
 langchain-community
-langchain-ollama
-faiss-cpu
-tiktoken
+# langchain-ollama
+# faiss-cpu
+# tiktoken
 
-#lanngraph
-langgraph
-docling
-pdfplumber
-sentence-transformers
+# #lanngraph
+# langgraph
+# docling
+# pdfplumber
+# sentence-transformers
+# azure-cosmos
 
-fastapi
-uvicorn
-python-multipart
-azure-cosmos
