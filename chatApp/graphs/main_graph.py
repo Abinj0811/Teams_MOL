@@ -31,7 +31,7 @@ chat_graph = StateGraph(ChatState)
 
 # --- Define nodes ---
 chat_graph.add_node("retrieve", RetrieverNode().execute)
-llm = RetrieverNode().rag_bot.model
+llm = RetrieverNode().rag_bot.llm
 chat_graph.add_node("evaluate", EvaluatorNode().execute)
 chat_graph.add_node("rerank", RerankNode().execute)
 chat_graph.add_node("regenerate", RegenerateNode(llm).execute)
