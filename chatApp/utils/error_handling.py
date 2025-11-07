@@ -25,7 +25,9 @@ class PipelineState:
         self.state: Dict[str, Any] = {}
         self.errors: Dict[str, str] = {}
         self.warnings: Dict[str, str] = {}
-    
+    def to_dict(self) -> dict:
+        return dict(self.state)
+
     def set_state(self, key: str, value: Any):
         """Set state value"""
         self.state[key] = value
