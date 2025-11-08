@@ -1,14 +1,15 @@
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict
-from nodes.chat_node import RetrieverNode, GenerationNode, RerankNode, EvaluatorNode, RegenerateNode
+from nodes.chat_node import ThinkpalmRAG, RetrieverNode, GenerationNode, RerankNode, EvaluatorNode, RegenerateNode
 from nodes.embedding_node import FAISSEmbeddingNode
 from nodes.new_base_node import BaseNode
 # Define pipeline state
-from typing import TypedDict, List, Any
-
+from typing import TypedDict, List, Any, Dict
+import os
 
 class ChatState(TypedDict):
     question: str
+    user_id: str
     vector_store_path: str
     retrieved_docs: List[Any]
     initial_answer: str
@@ -23,12 +24,27 @@ class ChatState(TypedDict):
     final_context: List
     final_answer: str
     answer: str
+    chat_memory: Dict[str, List[tuple]] 
     
-# """
+# ------------- Add RAG node -------------
+COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT")
+COSMOS_KEY = os.getenv("COSMOS_KEY")
+COSMOS_DATABASE = os.getenv("COSMOS_DATABASE")
+COSMOS_CONTAINER = os.getenv("COSMOS_CONTAINER")
+CHAT_CONTAINER = os.getenv("CHAT_CONTAINER")
 
-# Instantiate node
+rag_instance = ThinkpalmRAG()
+
+def rag_node(state: ChatState):
+    """Single-node RAG pipeline"""
+    user_id = state["user_id"]
+    question = state["question"]
+    answer = rag_instance.ask(user_id, question)
+    state["rag_response"] = answer
+    return state
+
 chat_graph = StateGraph(ChatState)
-
+'''
 # --- Define nodes ---
 chat_graph.add_node("retrieve", RetrieverNode().execute)
 llm = RetrieverNode().rag_bot.llm
@@ -60,14 +76,14 @@ chat_graph.add_edge("regenerate", END)
 
 chat_graph = chat_graph.compile()
 
-# """
-'''
+"""
+# '''
 # Instantiate node
 chat_graph = StateGraph(ChatState)
 
 # --- Define nodes ---
 chat_graph.add_node("retrieve", RetrieverNode().execute)
-llm = RetrieverNode().rag_bot.model
+llm = RetrieverNode().rag_bot.llm
 # chat_graph.add_node("evaluate", EvaluatorNode().execute)
 # chat_graph.add_node("rerank", RerankNode().execute)
 # chat_graph.add_node("regenerate", RegenerateNode(llm).execute)

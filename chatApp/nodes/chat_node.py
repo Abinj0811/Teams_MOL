@@ -14,10 +14,447 @@ from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional, Dict, Any
 import os
-
+import re
 from dotenv import load_dotenv
 load_dotenv()
 OPENAI_API_KEY=os.getenv("OPENAI_API_KEY")
+
+import os
+import json
+import uuid
+from datetime import datetime
+from dotenv import load_dotenv
+from azure.cosmos import CosmosClient, exceptions, PartitionKey
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.runnables import RunnablePassthrough
+from langchain_core.callbacks import StreamingStdOutCallbackHandler
+from langchain_classic.memory import ConversationSummaryMemory
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from collections import deque
+from azure.cosmos import CosmosClient, exceptions, PartitionKey
+import json
+import uuid
+load_dotenv()
+
+
+class ThinkpalmRAG:
+    def __init__(self):
+        # ========== CONFIG ==========
+        self.cosmos_endpoint = os.getenv("COSMOS_ENDPOINT")
+        self.cosmos_key = os.getenv("COSMOS_KEY")
+        self.db_name = os.getenv("COSMOS_DATABASE")
+        self.container_name = os.getenv("COSMOS_CONTAINER")
+        self.history_container_name = os.getenv("CHAT_CONTAINER")
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+        self.model_name = os.getenv("MODEL_NAME", "text-embedding-3-small")
+
+        self.top_k = 5
+        self.chat_memory = {}  # { user_id: deque([(user_msg, assistant_msg), ...]) }
+        self.history_limit = 5
+        
+
+        # ========== CLIENTS ==========
+        self.client = CosmosClient(url=self.cosmos_endpoint, credential=self.cosmos_key)
+        self.db = self._ensure_database(self.db_name)
+        self.container = self._ensure_container(self.container_name)
+        self.history_container = self._ensure_container(self.history_container_name, partition_key="user_id")
+
+        # ========== EMBEDDINGS + LLM ==========
+        self.embeddings = OpenAIEmbeddings(model=self.model_name)
+        self.llm = ChatOpenAI(
+            model="gpt-4.1",
+            api_key=self.OPENAI_API_KEY,
+            streaming=True,
+            callbacks=[StreamingStdOutCallbackHandler()],
+        )
+
+        # ========== RETRIEVER & RAG CHAIN ==========
+        self.rag_chain = self._build_rag_chain()
+
+    # ------------------------------------------------------------
+    # COSMOS HELPERS
+    # ------------------------------------------------------------
+    def _ensure_database(self, db_name):
+        try:
+            return self.client.create_database_if_not_exists(id=db_name)
+        except Exception as e:
+            print(f"Error ensuring database: {e}")
+            raise
+
+    def _ensure_container(self, container_name, partition_key="id"):
+        try:
+            return self.db.create_container_if_not_exists(
+                id=container_name, partition_key=PartitionKey(path=f"/{partition_key}")
+            )
+        except Exception as e:
+            print(f"Error ensuring container '{container_name}': {e}")
+            raise
+
+    def load_user_history(self, user_id: str):
+        """Load last 5 chat turns for a user from Cosmos DB into memory."""
+        try:
+            query = f"""
+            SELECT TOP {self.history_limit * 2} c.user, c.assistant, c.timestamp
+            FROM c
+            WHERE c.user_id = '{user_id}'
+            ORDER BY c.timestamp DESC
+            """
+            items = list(self.history_container.query_items(query=query, enable_cross_partition_query=True))
+            items.reverse()
+
+            self.chat_memory[user_id] = deque(
+                [(it["user"], it["assistant"]) for it in items[-self.history_limit:]],
+                maxlen=self.history_limit
+            )
+            print(f"✅ Loaded {len(self.chat_memory[user_id])} past turns from Cosmos for {user_id}")
+        except exceptions.CosmosResourceNotFoundError:
+            print(f"⚠️ No existing history for {user_id}.")
+            self.chat_memory[user_id] = deque(maxlen=self.history_limit)
+        except Exception as e:
+            print(f"Error loading history for {user_id}: {e}")
+            self.chat_memory[user_id] = deque(maxlen=self.history_limit)
+        
+    def get_memory(self, state, user_id):
+        """Retrieve or initialize chat memory from graph state."""
+        if "chat_memory" not in state:
+            state["chat_memory"] = {}
+        if user_id not in state["chat_memory"]:
+            state["chat_memory"][user_id] = []
+        return state["chat_memory"][user_id]
+
+    def save_to_memory(self, state, user_id, user_msg, assistant_msg):
+        if "chat_memory" not in state:
+            state["chat_memory"] = {}
+        if user_id not in state["chat_memory"]:
+            state["chat_memory"][user_id] = []
+        state["chat_memory"][user_id].append((user_msg, assistant_msg))
+        self.chat_memory[user_id] = state["chat_memory"][user_id]
+
+
+    def persist_user_history(self, user_id: str, state=None):
+        """Save the last N chat turns for a user to Cosmos DB."""
+        try:
+            # 🔧 unwrap PipelineState if passed
+            if state is not None and hasattr(state, "state"):
+                state = state.state
+
+            # ✅ Prefer chat_memory from state if available
+            if state and "chat_memory" in state and user_id in state["chat_memory"]:
+                chat_memory = state["chat_memory"][user_id]
+            elif user_id in self.chat_memory:
+                chat_memory = self.chat_memory[user_id]
+            else:
+                print(f"⚠️ No memory found for {user_id}")
+                return
+
+            for user_msg, assistant_msg in chat_memory[-self.history_limit:]:
+                item = {
+                    "id": f"{user_id}-{uuid.uuid4().hex[:8]}",
+                    "user_id": user_id,
+                    "user": user_msg,
+                    "assistant": assistant_msg,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+                self.history_container.upsert_item(item)
+
+            print(f"✅ Persisted {len(chat_memory[-self.history_limit:])} messages for {user_id}")
+
+        except Exception as e:
+            print(f"❌ Failed to persist history for {user_id}: {e}")
+
+    def update_chat_memory(self, user_id: str, user_msg: str, assistant_msg: str):
+        """Update in-memory history (no DB write during active chat)."""
+        if user_id not in self.chat_memory:
+            self.chat_memory[user_id] = deque(maxlen=self.history_limit)
+        self.chat_memory[user_id].append((user_msg, assistant_msg))
+
+    def clear_user_history(self, user_id: str):
+        """
+        Delete all chat history items for a given user_id from the Cosmos DB chat container.
+        """
+        try:
+            # Query all items for this user_id
+            query = f"SELECT c.id FROM c WHERE c.user_id = '{user_id}'"
+            items = list(self.history_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            print(f"🧹 Found {len(items)} messages for user '{user_id}' to delete...")
+
+            # Delete each item
+            for item in items:
+                item_id = item["id"]
+                self.history_container.delete_item(item=item_id, partition_key=user_id)
+
+            print(f"✅ Cleared all chat history for user '{user_id}'.")
+            return True
+
+        except Exception as e:
+            print(f"❌ Error clearing history for {user_id}: {e}")
+            return False
+
+
+    def get_user_history(self, user_id):
+        """
+        Return recent user/assistant turns:
+        - Use in-memory cache during an active session.
+        - Otherwise, load from Cosmos DB.
+        """
+        # ✅ First: check local session memory
+        if user_id in self.chat_memory and self.chat_memory[user_id]:
+            print(f"💾 Loaded {len(self.chat_memory[user_id])} turns from in-memory cache for {user_id}")
+            return [
+                {"user": u, "assistant": a}
+                for u, a in self.chat_memory[user_id][-self.history_limit:]
+            ]
+
+        # ☁️ Fallback: fetch from Cosmos DB (for new sessions)
+        try:
+            query = f"""
+            SELECT * FROM c 
+            WHERE c.user_id = '{user_id}'
+            ORDER BY c.timestamp ASC
+            """
+            items = list(self.history_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            items = sorted(items, key=lambda x: x.get("timestamp", ""), reverse=False)
+            print(f"✅ Loaded {len(items)} past turns from Cosmos for {user_id}")
+            return items
+        except Exception as e:
+            print(f"⚠️ Error fetching user history: {e}")
+            return []
+
+    # Step 3️⃣ — Inject history before prompt
+    def inject_history(self, inputs: dict) -> dict:
+        """
+        Inject formatted chat history and context into the LLM input.
+        Compatible with both LangGraph and standalone RAG pipeline.
+        """
+        # 🧩 Resolve user_id safely
+        uid = inputs.get("user_id")
+        if isinstance(uid, dict):
+            uid = uid.get("user_id") or str(uid)
+        if not isinstance(uid, str):
+            uid = str(uid)
+
+        # 🧠 Retrieve full chat history (hybrid: memory + Cosmos)
+        history = self.get_chat_history_text(uid)
+
+        # 📄 Handle Document objects or dict fallback
+        context_docs = inputs.get("context_docs", [])
+        print(f"[DEBUG] Context docs type: {type(context_docs[0]) if context_docs else 'None'}")
+
+        formatted_context = "\n\n".join([
+            d.page_content if hasattr(d, "page_content") else d.get("page_content", "")
+            for d in context_docs
+        ])
+
+        return {
+            "context": formatted_context,
+            "question": inputs.get("question", ""),
+            "history": history,
+            "user_id": uid
+        }
+    def get_chat_history_text(self, user_id: str) -> str:
+        """
+        Retrieve chat history for the given user.
+        Prefer in-memory (session) chat_memory; fallback to Cosmos DB.
+        Returns formatted conversation string.
+        """
+        try:
+            # ✅ Prefer in-memory cache
+            memory = self.chat_memory.get(user_id, [])
+            
+            # 🧩 Defensive fix: ensure it's a list
+            if isinstance(memory, dict):
+                # Convert dict to list of (user, assistant) pairs if needed
+                memory = [(k, v) for k, v in memory.items()]
+            elif not isinstance(memory, list):
+                memory = []
+
+            # ⚙️ If empty → fallback to Cosmos DB
+            if not memory:
+                query = f"""
+                SELECT * FROM c 
+                WHERE c.user_id = '{user_id}'
+                ORDER BY c.timestamp ASC
+                """
+                items = list(self.history_container.query_items(
+                    query=query,
+                    enable_cross_partition_query=True
+                ))
+                items = sorted(items, key=lambda x: x.get("timestamp", ""), reverse=False)
+                print(f"✅ Loaded {len(items)} past turns from Cosmos for {user_id}")
+                
+                # ✅ Store into in-memory cache
+                memory = [(i.get("user", ""), i.get("assistant", "")) for i in items]
+                self.chat_memory[user_id] = memory
+            else:
+                print(f"💾 Loaded {len(memory)} turns from in-memory cache for {user_id}")
+
+            # ✅ Safely slice only lists
+            limited_pairs = memory[-self.history_limit:] if isinstance(memory, list) else []
+            
+            history_text = "\n".join([
+                f"User: {u}\nAssistant: {a}" for u, a in limited_pairs
+            ])
+            return history_text.strip()
+
+        except Exception as e:
+            print(f"⚠️ Error retrieving chat history for {user_id}: {e}")
+            return ""
+
+
+
+    # ------------------------------------------------------------
+    # VECTOR SEARCH ON COSMOS
+    # ------------------------------------------------------------
+    def _embed_query(self, query: str):
+        """Get OpenAI embeddings for the query."""
+        return self.embeddings.embed_query(query)
+
+    def search_cosmos_documents(self, query: str):
+        """Perform vector search using Cosmos SQL API's VectorDistance function."""
+        query_emb = self._embed_query(query)
+        emb_json = json.dumps(query_emb)
+
+        sql = f"""
+        SELECT TOP {self.top_k}
+            c.id, c.text, c.metadata,
+            VectorDistance(c.vector_embedding, {emb_json}) AS score
+        FROM c
+        ORDER BY VectorDistance(c.vector_embedding, {emb_json})
+        """
+        items = list(self.container.query_items(query=sql, enable_cross_partition_query=True))
+
+        # ✅ Return proper Document objects
+        return [
+            Document(page_content=i.get("text", ""), metadata={"id": i.get("id"), "score": i.get("score")})
+            for i in items
+        ]
+
+    # ------------------------------------------------------------
+    # PROMPT + RAG CHAIN
+    # ------------------------------------------------------------
+    @staticmethod
+    def format_docs(docs):
+        """Combine retrieved docs into one context block."""
+        return "\n\n".join([doc["page_content"] for doc in docs])
+
+    def _build_prompt_template(self):
+        """Create a prompt that includes chat history + context."""
+        return ChatPromptTemplate.from_template("""
+    You are a policy assistant for MOL Chemical Tankers.
+    Answer precisely and only based on the provided context and the past conversation.
+
+    Guidelines:
+    1. Use the conversation history below to understand the topic and follow-up questions.
+    2. If the question refers to "it", "this", or "explain again", look at the last assistant response in the history.
+    3. Only use the provided context for factual information — do not invent details.
+
+    ---
+    ### Conversation History
+    {history}
+
+    ### Current Question
+    {question}
+
+    ### Context
+    {context}
+
+    ---
+    Answer:
+    """)
+
+
+    
+    def _build_rag_chain(self):
+        """Create the retrieval + generation chain with selective memory-based rewriting."""
+        prompt = self._build_prompt_template()
+
+        # ⚡️ Pronoun / vague reference detector
+        PRONOUN_PATTERN = re.compile(
+            r"\b(it|this|that|they|them|those|there|these|he|she|his|her|their|mentioned|above|same)\b",
+            re.IGNORECASE
+        )
+
+        def rewrite_question(inputs):
+            user_id = inputs["user_id"]
+            question = inputs["question"].strip()
+            history_text = self.get_chat_history_text(user_id)
+
+            # 🧩 If no prior history, skip rewriting
+            if not history_text:
+                return {"user_id": user_id, "question": question}
+
+            # 🧠 If pronoun detected → use LLM to clarify
+            if PRONOUN_PATTERN.search(question):
+                reformulation_prompt = f"""
+                You are a helpful assistant. Based on the conversation below,
+                rewrite the latest user question so that it is self-contained and unambiguous.
+
+                Conversation History:
+                {history_text}
+
+                Latest User Question: {question}
+
+                Rewritten question:
+                """
+                rewritten = self.llm.invoke(reformulation_prompt).content.strip()
+                print(f"🔁 Rewritten question: {rewritten}")
+                return {"user_id": user_id, "question": rewritten}
+
+            # 🚀 No pronouns → no rewrite
+            return {"user_id": user_id, "question": question}
+
+
+        # Step 2️⃣ — Retrieval runnable (uses rewritten question)
+        def retrieve_with_rewrite(inputs):
+            """Rewrite the question, then search Cosmos with rewritten text."""
+            rewritten = rewrite_question(inputs)
+            docs = self.search_cosmos_documents(rewritten["question"])
+            return {
+                "context_docs": docs,
+                "user_id": rewritten["user_id"],
+                "question": rewritten["question"],
+            }
+
+        
+
+
+
+        # Step 4️⃣ — Full chain
+        return (
+            RunnableLambda(retrieve_with_rewrite)
+            |  RunnableLambda(lambda inputs: self.inject_history(inputs))
+            | prompt
+            | self.llm
+            | StrOutputParser()
+        )
+
+    # ------------------------------------------------------------
+    # ASK (MAIN ENTRYPOINT)
+    # ------------------------------------------------------------
+    def ask(self, user_id, question: str):
+        """Run full RAG flow: retrieve from Cosmos + generate answer."""
+        if user_id not in self.chat_memory:
+            self.load_user_history(user_id)
+            
+        print(f"💬 Asking: {question}")
+        
+        inputs = {"user_id": user_id, "question": question}
+        response = self.rag_chain.invoke(inputs)
+        
+        docs = self.search_cosmos_documents(question)
+        self.update_chat_memory(user_id, question, response)
+        
+        return response, docs
+    
+
 
 class RetrieverNode(BaseNode):
     def __init__(self):
@@ -26,8 +463,16 @@ class RetrieverNode(BaseNode):
         
     def execute(self, state: dict):
         
-        state["initial_answer"], state["retrieved_docs"] = self.rag_bot.ask(state["question"])
+        state["initial_answer"], state["retrieved_docs"] = self.rag_bot.ask(state["user_id"], state["question"])
         state["rag_response"]  = state["initial_answer"]
+        # ✅ Save to memory (state + class)
+        self.rag_bot.save_to_memory(
+            state,
+            state["user_id"],
+            state["question"],
+            state["initial_answer"]
+        )
+
         # docs = self.rag_bot.vector_store.similarity_search(state["question"], k=7)        
         
         return state
@@ -240,6 +685,7 @@ class GenerationNode:
         state["answer"] = response.content if hasattr(response, "content") else str(response)
         state["rag_response"] = state["answer"]
         
+        
         return state
     
 
@@ -363,3 +809,11 @@ Your previous answer failed evaluation. Use the critique and refined query to co
         state["rag_response"] = new_answer 
         state["regeneration_count"] = state.get("regeneration_count", 0) + 1 
         state["refined_question"] = refined_question # store for transparency return state
+        
+        # ✅ Save to memory (state + class)
+        # self.rag_bot.save_to_memory(
+        #     state,
+        #     state["user_id"],
+        #     state["question"],
+        #     state["initial_answer"]
+        # )
