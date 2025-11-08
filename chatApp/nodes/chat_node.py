@@ -52,7 +52,9 @@ class ThinkpalmRAG:
 
         self.top_k = 5
         self.chat_memory = {}  # { user_id: deque([(user_msg, assistant_msg), ...]) }
+        self.last_sync_counter = {}   # track per-user unsynced turns
         self.history_limit = 5
+        self.autosave_interval = 3  
         
 
         # ========== CLIENTS ==========
@@ -95,14 +97,21 @@ class ThinkpalmRAG:
     def load_user_history(self, user_id: str):
         """Load last 5 chat turns for a user from Cosmos DB into memory."""
         try:
+            # load_user_history()
             query = f"""
             SELECT TOP {self.history_limit * 2} c.user, c.assistant, c.timestamp
             FROM c
             WHERE c.user_id = '{user_id}'
-            ORDER BY c.timestamp DESC
+            ORDER BY c.timestamp ASC
             """
             items = list(self.history_container.query_items(query=query, enable_cross_partition_query=True))
-            items.reverse()
+
+            self.chat_memory[user_id] = deque(
+                [(it["user"], it["assistant"]) for it in items[-self.history_limit:]],
+                maxlen=self.history_limit
+            )
+
+            items = list(self.history_container.query_items(query=query, enable_cross_partition_query=True))
 
             self.chat_memory[user_id] = deque(
                 [(it["user"], it["assistant"]) for it in items[-self.history_limit:]],
@@ -115,43 +124,78 @@ class ThinkpalmRAG:
         except Exception as e:
             print(f"Error loading history for {user_id}: {e}")
             self.chat_memory[user_id] = deque(maxlen=self.history_limit)
-        
-    def get_memory(self, state, user_id):
-        """Retrieve or initialize chat memory from graph state."""
-        if "chat_memory" not in state:
-            state["chat_memory"] = {}
-        if user_id not in state["chat_memory"]:
-            state["chat_memory"][user_id] = []
-        return state["chat_memory"][user_id]
 
-    def save_to_memory(self, state, user_id, user_msg, assistant_msg):
+    def save_to_memory(self, state, user_id: str, user_msg: str, assistant_msg: str):
+        """Save chat turn in both session state and rolling memory; autosync every few turns."""
+        
+        # Initialize chat memory in both state and instance, if missing
         if "chat_memory" not in state:
             state["chat_memory"] = {}
-        if user_id not in state["chat_memory"]:
-            state["chat_memory"][user_id] = []
-        state["chat_memory"][user_id].append((user_msg, assistant_msg))
-        self.chat_memory[user_id] = state["chat_memory"][user_id]
+
+        if user_id not in self.chat_memory:
+            self.chat_memory[user_id] = deque(maxlen=self.history_limit)
+            self.last_sync_counter[user_id] = 0
+
+        # Add message to deque (auto-trims old entries)
+        self.chat_memory[user_id].append((user_msg, assistant_msg))
+
+        # Reflect it back to state (optional, for graph continuity)
+        state["chat_memory"][user_id] = list(self.chat_memory[user_id])
+
+        # Increment turn counter
+        self.last_sync_counter[user_id] = self.last_sync_counter.get(user_id, 0) + 1
+
+        # ✅ Auto-sync every N turns
+        if self.last_sync_counter[user_id] >= self.autosave_interval:
+            print(f"💾 Auto-syncing {user_id}'s chat history to Cosmos...")
+            self.persist_user_history(user_id)
+            self.last_sync_counter[user_id] = 0
 
 
     def persist_user_history(self, user_id: str, state=None):
-        """Save the last N chat turns for a user to Cosmos DB."""
+        """
+        Persist last N turns to Cosmos DB.
+        Works during autosave (RAG instance available) AND final exit (only state available).
+        """
         try:
-            # 🔧 unwrap PipelineState if passed
-            if state is not None and hasattr(state, "state"):
-                state = state.state
+            # ✅ Determine memory source
+            memory = []
 
-            # ✅ Prefer chat_memory from state if available
-            if state and "chat_memory" in state and user_id in state["chat_memory"]:
-                chat_memory = state["chat_memory"][user_id]
-            elif user_id in self.chat_memory:
-                chat_memory = self.chat_memory[user_id]
-            else:
-                print(f"⚠️ No memory found for {user_id}")
+            # 1️⃣ If instance memory exists and not empty
+            if hasattr(self, "chat_memory") and self.chat_memory.get(user_id):
+                memory = list(self.chat_memory[user_id])
+                print(f"💾 Using in-memory chat cache for {user_id} ({len(memory)} turns).")
+
+            # 2️⃣ Otherwise fallback to state object
+            elif state and hasattr(state, "state") and "chat_memory" in state.state:
+                memory = state.state["chat_memory"].get(user_id, [])
+                print(f"💾 Using state-based chat memory for {user_id} ({len(memory)} turns).")
+
+            if not memory:
+                print(f"⚠️ No chat history found to persist for {user_id}.")
                 return
 
-            for user_msg, assistant_msg in chat_memory[-self.history_limit:]:
+            # ✅ Delete older records (keeping only last N turns)
+            query = f"""
+            SELECT c.id, c.timestamp FROM c 
+            WHERE c.user_id = '{user_id}'
+            ORDER BY c.timestamp DESC OFFSET {self.history_limit * 2} LIMIT 100
+            """
+            old_items = list(self.history_container.query_items(
+                query=query, enable_cross_partition_query=True
+            ))
+            for it in old_items:
+                try:
+                    self.history_container.delete_item(it["id"], partition_key=user_id)
+                except Exception:
+                    pass  # tolerate partial deletion for safety
+            if old_items:
+                print(f"🧹 Pruned {len(old_items)} old messages for {user_id}.")
+
+            # ✅ Save most recent N turns
+            for user_msg, assistant_msg in list(memory)[-self.history_limit:]:
                 item = {
-                    "id": f"{user_id}-{uuid.uuid4().hex[:8]}",
+                    "id": f"{user_id}-{datetime.utcnow().isoformat()}",
                     "user_id": user_id,
                     "user": user_msg,
                     "assistant": assistant_msg,
@@ -159,13 +203,16 @@ class ThinkpalmRAG:
                 }
                 self.history_container.upsert_item(item)
 
-            print(f"✅ Persisted {len(chat_memory[-self.history_limit:])} messages for {user_id}")
-
+            print(f"✅ Persisted {len(memory)} messages for {user_id} to Cosmos.")
+        
         except Exception as e:
             print(f"❌ Failed to persist history for {user_id}: {e}")
 
+
+
     def update_chat_memory(self, user_id: str, user_msg: str, assistant_msg: str):
         """Update in-memory history (no DB write during active chat)."""
+        
         if user_id not in self.chat_memory:
             self.chat_memory[user_id] = deque(maxlen=self.history_limit)
         self.chat_memory[user_id].append((user_msg, assistant_msg))
@@ -182,7 +229,7 @@ class ThinkpalmRAG:
                 enable_cross_partition_query=True
             ))
             print(f"🧹 Found {len(items)} messages for user '{user_id}' to delete...")
-
+            exit()
             # Delete each item
             for item in items:
                 item_id = item["id"]
@@ -195,38 +242,6 @@ class ThinkpalmRAG:
             print(f"❌ Error clearing history for {user_id}: {e}")
             return False
 
-
-    def get_user_history(self, user_id):
-        """
-        Return recent user/assistant turns:
-        - Use in-memory cache during an active session.
-        - Otherwise, load from Cosmos DB.
-        """
-        # ✅ First: check local session memory
-        if user_id in self.chat_memory and self.chat_memory[user_id]:
-            print(f"💾 Loaded {len(self.chat_memory[user_id])} turns from in-memory cache for {user_id}")
-            return [
-                {"user": u, "assistant": a}
-                for u, a in self.chat_memory[user_id][-self.history_limit:]
-            ]
-
-        # ☁️ Fallback: fetch from Cosmos DB (for new sessions)
-        try:
-            query = f"""
-            SELECT * FROM c 
-            WHERE c.user_id = '{user_id}'
-            ORDER BY c.timestamp ASC
-            """
-            items = list(self.history_container.query_items(
-                query=query,
-                enable_cross_partition_query=True
-            ))
-            items = sorted(items, key=lambda x: x.get("timestamp", ""), reverse=False)
-            print(f"✅ Loaded {len(items)} past turns from Cosmos for {user_id}")
-            return items
-        except Exception as e:
-            print(f"⚠️ Error fetching user history: {e}")
-            return []
 
     # Step 3️⃣ — Inject history before prompt
     def inject_history(self, inputs: dict) -> dict:
@@ -241,13 +256,11 @@ class ThinkpalmRAG:
         if not isinstance(uid, str):
             uid = str(uid)
 
-        # 🧠 Retrieve full chat history (hybrid: memory + Cosmos)
+        # 🧠 Retrieve full chat history (hybrid: memory + Cosmos) for every question
         history = self.get_chat_history_text(uid)
 
         # 📄 Handle Document objects or dict fallback
         context_docs = inputs.get("context_docs", [])
-        print(f"[DEBUG] Context docs type: {type(context_docs[0]) if context_docs else 'None'}")
-
         formatted_context = "\n\n".join([
             d.page_content if hasattr(d, "page_content") else d.get("page_content", "")
             for d in context_docs
@@ -279,7 +292,7 @@ class ThinkpalmRAG:
             # ⚙️ If empty → fallback to Cosmos DB
             if not memory:
                 query = f"""
-                SELECT * FROM c 
+                SELECT TOP {self.history_limit * 2} * FROM c 
                 WHERE c.user_id = '{user_id}'
                 ORDER BY c.timestamp ASC
                 """
@@ -307,8 +320,6 @@ class ThinkpalmRAG:
         except Exception as e:
             print(f"⚠️ Error retrieving chat history for {user_id}: {e}")
             return ""
-
-
 
     # ------------------------------------------------------------
     # VECTOR SEARCH ON COSMOS
@@ -370,7 +381,6 @@ class ThinkpalmRAG:
     Answer:
     """)
 
-
     
     def _build_rag_chain(self):
         """Create the retrieval + generation chain with selective memory-based rewriting."""
@@ -423,9 +433,6 @@ class ThinkpalmRAG:
                 "question": rewritten["question"],
             }
 
-        
-
-
 
         # Step 4️⃣ — Full chain
         return (
@@ -442,6 +449,7 @@ class ThinkpalmRAG:
     def ask(self, user_id, question: str):
         """Run full RAG flow: retrieve from Cosmos + generate answer."""
         if user_id not in self.chat_memory:
+            # Load at the initial time. per user per session
             self.load_user_history(user_id)
             
         print(f"💬 Asking: {question}")
@@ -477,7 +485,6 @@ class RetrieverNode(BaseNode):
         
         return state
     
-
 """
 # evaluation with cross encoder from sentance transformers
 class EvaluatorNode:
@@ -805,6 +812,7 @@ Your previous answer failed evaluation. Use the critique and refined query to co
     )
 
         answer_result = self.llm.invoke(regeneration_prompt)
+
         new_answer = answer_result.content.strip()
         state["rag_response"] = new_answer 
         state["regeneration_count"] = state.get("regeneration_count", 0) + 1 
