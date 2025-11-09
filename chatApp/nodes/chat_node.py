@@ -32,6 +32,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.callbacks import StreamingStdOutCallbackHandler
 from langchain_classic.memory import ConversationSummaryMemory
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
+from langchain_core.prompts import ChatPromptTemplate
 from collections import deque
 from azure.cosmos import CosmosClient, exceptions, PartitionKey
 import json
@@ -48,7 +49,7 @@ class ThinkpalmRAG:
         self.container_name = os.getenv("COSMOS_CONTAINER")
         self.history_container_name = os.getenv("CHAT_CONTAINER")
         self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-        self.model_name = os.getenv("MODEL_NAME", "text-embedding-3-small")
+        self.model_name = os.getenv("MODEL_NAME", "text-embedding-3-large")
 
         self.top_k = 5
         self.chat_memory = {}  # { user_id: deque([(user_msg, assistant_msg), ...]) }
@@ -56,6 +57,39 @@ class ThinkpalmRAG:
         self.history_limit = 5
         self.autosave_interval = 3  
         
+        self.COMMITTEE_RULES = """
+            If the question involves a committee:
+            - Identify and list the committee structure if available in context.
+            - Copy names and roles verbatim; omit sections not found.
+            """
+
+        self.COST_RULES = """
+            If the question concerns cost, budget, or amount:
+            - Determine approval thresholds by total category amount.
+            - Include authorised approvers, reviews, and reports exactly as stated.
+            - Do not merge unrelated categories.
+            """
+        self.DISAMBIGUATION_RULE = """
+            If the question concerns acquisition/cost/disposal but does not explicitly use terms like 'IT', 'Information Technology', 'ICS', or 'DXS', **prioritize the policy section labeled 'Excluding IT related assets'** over policies labeled 'IT related assets'.
+            """
+        self.FINAL_PRIORITIZATION_RULE = """
+    CRITICAL FINANCIAL RULE: Use the following order of precedence to select the policy line from the context:
+    1.  **EXACT MATCH PRIORITY:** If the HINTS contain a complete, explicit threshold phrase (e.g., 'Less than US$50,000' or 'US$100,000 or more'), you MUST select that exact policy line. Do not look for a more restrictive amount.
+    2.  **CLOSEST VALUE (TIE-BREAKER):** If the HINTS only contain an ambiguous dollar amount (e.g., 'US$ 8,300') AND a general qualifier (e.g., 'Less than'), you MUST choose the policy line with the **closest and most restrictive** threshold that covers the amount.
+        * For 'Less than' amounts, pick the lowest policy limit that still covers the dollar amount (e.g., $10k over $25k for an amount under $10k).
+    """
+            
+        self.NOVATION_RULES = """
+            If the question concerns novation, amendment, or cancellation:
+            - Use the exact policy title and approval structure from context.
+            - Include deliberations, reviews, and co-management departments verbatim.
+            """
+
+        self.SUBTYPE_RULES = """
+            If the question mentions specific subtypes (CLI, FDD, DTH, TCL):
+            - Identify the responsible department exactly as shown in context.
+            - Prefer subtype-specific rules over general ones.
+            """
 
         # ========== CLIENTS ==========
         self.client = CosmosClient(url=self.cosmos_endpoint, credential=self.cosmos_key)
@@ -67,13 +101,14 @@ class ThinkpalmRAG:
         self.embeddings = OpenAIEmbeddings(model=self.model_name)
         self.llm = ChatOpenAI(
             model="gpt-4.1",
+            temperature=0.1,
             api_key=self.OPENAI_API_KEY,
             streaming=True,
             callbacks=[StreamingStdOutCallbackHandler()],
         )
 
         # ========== RETRIEVER & RAG CHAIN ==========
-        self.rag_chain = self._build_rag_chain()
+        
 
     # ------------------------------------------------------------
     # COSMOS HELPERS
@@ -229,7 +264,7 @@ class ThinkpalmRAG:
                 enable_cross_partition_query=True
             ))
             print(f"🧹 Found {len(items)} messages for user '{user_id}' to delete...")
-            exit()
+            # exit()
             # Delete each item
             for item in items:
                 item_id = item["id"]
@@ -242,6 +277,36 @@ class ThinkpalmRAG:
             print(f"❌ Error clearing history for {user_id}: {e}")
             return False
 
+    def clean_content(self, doc: 'Document') -> str:
+            """
+            Safely extracts and cleans the text content from a LangChain Document object.
+            
+            Args:
+                doc: A langchain_core.documents.base.Document object.
+            
+            Returns:
+                The cleaned page_content string.
+            """
+            if not hasattr(doc, 'page_content') or not doc.page_content:
+                return ""
+                
+            text = doc.page_content
+            
+            # 1. Replace symbols with standard list markers
+            text = text.replace('◎', '*').replace('○', '*').replace('△', '*')
+            
+            # 2. REMOVE ALL CLASSIFICATION TAGS
+            text = text.replace('(EXECUTIVEOFFICERS)', '').replace('(GLOBAL/REGIONALDIRECTORS)', '')
+            
+            # 3. Clean up phrasing (to isolate the roles more clearly)
+            text = text.replace(' is the Chairperson of the ShipManagementCommittee.', ' (Chairperson)')
+            text = text.replace('Members of the ShipManagementCommittee are:', 'Members:')
+            text = text.replace('Sub-members of the ShipManagementCommittee are:', 'Sub-members:')
+            
+            # 4. Strip extra whitespace that might have been introduced
+            text = text.strip()
+            
+            return text
 
     # Step 3️⃣ — Inject history before prompt
     def inject_history(self, inputs: dict) -> dict:
@@ -249,6 +314,7 @@ class ThinkpalmRAG:
         Inject formatted chat history and context into the LLM input.
         Compatible with both LangGraph and standalone RAG pipeline.
         """
+
         # 🧩 Resolve user_id safely
         uid = inputs.get("user_id")
         if isinstance(uid, dict):
@@ -260,11 +326,23 @@ class ThinkpalmRAG:
         history = self.get_chat_history_text(uid)
 
         # 📄 Handle Document objects or dict fallback
-        context_docs = inputs.get("context_docs", [])
+        context_docs = inputs.get("context", [])
+        
+        # --- ✂️ CLEANUP PERFORMED HERE DURING STRING JOINING ---
+        
+        
+        # This line iterates, cleans the content, and extracts it for formatting
+
+    
         formatted_context = "\n\n".join([
-            d.page_content if hasattr(d, "page_content") else d.get("page_content", "")
-            for d in context_docs
+            self.clean_content(d)  # <-- CALL USING self. AND PASS THE WHOLE OBJECT 'd'
+            # The clean_content method handles accessing d.page_content internally
+            for d in context_docs 
+            # Add a filter to only process valid LangChain Document objects
+            if hasattr(d, 'page_content')
         ])
+        # print(context_docs)
+        # print(formatted_context)
 
         return {
             "context": formatted_context,
@@ -321,6 +399,93 @@ class ThinkpalmRAG:
             print(f"⚠️ Error retrieving chat history for {user_id}: {e}")
             return ""
 
+    def _add_retrieval_hints(self, text: str) -> str:
+        """
+        Adds structured retrieval hints (thresholds, IT vs Non-IT context, novation, golf, etc.)
+        to bias vector search toward the correct policy section.
+        """
+        """
+        Adds structured retrieval hints (thresholds, IT vs Non-IT context, novation, golf, etc.)
+        to bias vector search toward the correct policy section.
+        """
+        import re
+        from datetime import datetime
+
+        def _format_usd(n: int) -> str:
+            s = f"{n:,}"
+            return f"US$ {s}"
+
+        normalized_hints = []
+        amount_value = None
+
+        # --- Extract amount ---
+        m = re.search(r"(?:US\$|USD|\$)\s*([0-9]{1,3}(?:[, ]?[0-9]{3})*|[0-9]+)", text, flags=re.I)
+        if m:
+            raw = m.group(1)
+            amount_value = int(re.sub(r"[^0-9]", "", raw)) if raw else None
+            if amount_value is not None:
+                normalized_hints.append(_format_usd(amount_value))
+
+                # Threshold categories
+                # Threshold categories
+                if amount_value < 25000:
+                    normalized_hints.append("Less than US$25,000")
+                elif amount_value < 50000:
+                    normalized_hints.append("Less than US$50,000")
+                else:
+                    # Check if the query specifically mentioned "less than" this amount
+                    if re.search(r"less than|under", text, flags=re.I) and amount_value == 50000:
+                        normalized_hints.append("Less than US$50,000")
+                    else:
+                        normalized_hints.append("US$50,000 or more")
+        # --- Golf membership context ---
+        if re.search(r"golf\s*(course)?\s*membership", text, re.I):
+            normalized_hints += [
+                "Golf course membership",
+                "Non-IT fixed assets",
+                "Acquisition or disposal of assets excluding IT",
+                "Equipment and fixtures",
+            ]
+
+        # --- Write-off / FCCSP migrated ---
+        if re.search(r"(write[- ]?off|migrated|fccsp)", text, re.I):
+            if amount_value and amount_value < 25000:
+                normalized_hints += [
+                    "Write-off of assets",
+                    "Follow same approval criteria by amount",
+                    "Less than US$25,000 — A4 approval within department",
+                    "No formal GPM submission required",
+                ]
+            else:
+                normalized_hints += [
+                    "Write-off of assets",
+                    "Approval required as per disposal threshold",
+                    "Check golf course membership disposal rule",
+                ]
+                
+        if re.search(r"\bcommittee\b", text, re.I):
+            normalized_hints += [
+                "Committee structure",
+                "Committee composition",
+                "Chairperson",
+                "Members",
+                "Sub-members",
+                "Secretariat",
+                "Department roles",
+            ]
+
+        # --- Deduplication ---
+        if normalized_hints:
+            hints = []
+            seen = set()
+            for h in normalized_hints:
+                if h not in seen:
+                    hints.append(h)
+                    seen.add(h)
+            text += "\n\nHINTS: " + "; ".join(hints)
+
+        return text
+
     # ------------------------------------------------------------
     # VECTOR SEARCH ON COSMOS
     # ------------------------------------------------------------
@@ -354,37 +519,100 @@ class ThinkpalmRAG:
     @staticmethod
     def format_docs(docs):
         """Combine retrieved docs into one context block."""
+        with open("debug_docs.txt", "w") as f:
+            f.write("\n\n".join([doc.page_content for doc in docs]))
         return "\n\n".join([doc["page_content"] for doc in docs])
 
-    def _build_prompt_template(self):
-        """Create a prompt that includes chat history + context."""
-        return ChatPromptTemplate.from_template("""
-    You are a policy assistant for MOL Chemical Tankers.
-    Answer precisely and only based on the provided context and the past conversation.
+    def _build_prompt_template(self, question: str) -> "ChatPromptTemplate":
+        """
+        Create a prompt that includes chat history + context + dynamic extra rules.
+        """
 
-    Guidelines:
-    1. Use the conversation history below to understand the topic and follow-up questions.
-    2. If the question refers to "it", "this", or "explain again", look at the last assistant response in the history.
-    3. Only use the provided context for factual information — do not invent details.
+        self.HARD_EXCLUSION_RULE = """
+    CRITICAL PRE-FILTER: If the question contains the qualifier 'Less than' or 'Under', you are absolutely FORBIDDEN from selecting any policy line that contains the phrase 'or more'. Disregard that line entirely, regardless of the amount.
+        """
+        self.FINAL_PRIORITIZATION_RULE = """
+        CRITICAL FINAL RULE: Use the HINTS to select the correct policy line from the context, following this hierarchy:
+        1.  **DIRECT HINT MATCH:** If a specific financial threshold phrase in the HINTS (e.g., 'Less than US$50,000') **EXACTLY MATCHES** a policy line qualifier in the context, you MUST select that line. This overrides all other rules.
+        2.  **CLOSEST RESTRICTIVE FALLBACK:** If no exact match is found between the HINTS and the policy lines, you MUST find the policy line that represents the **closest and most restrictive** threshold that covers the dollar amount given in the question/hints.
+    """
+        # --- Dynamically build extra rules based on keywords ---
+        extra_rules = ""
+        q_lower = question.lower()
 
-    ---
-    ### Conversation History
-    {history}
+        if any(x in q_lower for x in ["novation", "amendment", "cancellation"]):
+            extra_rules += self.NOVATION_RULES
+        if any(x in q_lower for x in ["cost", "fee", "amount", "budget", "it-related", "acquisition", "disposal"]):
+            extra_rules += self.COST_RULES
+            # 1. Enforce Qualifier Priority
+            # # 1. ENFORCE HARD EXCLUSION FIRST (This is the necessary fix)
+            if re.search(r"less than|under", q_lower, flags=re.I):
+                extra_rules += self.HARD_EXCLUSION_RULE
+            extra_rules += self.FINAL_PRIORITIZATION_RULE 
+            
+            # 1. Create a regex pattern that matches any of these terms as a whole word (\b)
+            # This pattern ensures 'it' in 'acquisition' is ignored, but 'IT' as a standalone term is matched.
+            # Note: Since 'information technology' is multiple words, it doesn't need \b anchors.
+            pattern = r"\b(it|ics|dxs)\b"  # Whole word match for short terms
+            pattern += r"|information technology|it-related" # Substring match for multi-word/hyphenated terms
 
-    ### Current Question
-    {question}
+            # 2. Check the query string using the robust regex
+            it_term_found = re.search(pattern, q_lower)
 
-    ### Context
-    {context}
+            if it_term_found is None:
+                # ✅ Inject the rule because it's a general cost question
+                print("✅ DISAMBIGUATION ACTIVE: No IT exclusion terms found. Injecting 'Excluding IT' rule.")
+                extra_rules += self.DISAMBIGUATION_RULE
+            else:
+                # 🛑 If a match object exists (meaning an IT term was found)
+                print(f"⚠️ DISAMBIGUATION SKIPPED: The IT exclusion pattern was found: '{it_term_found.group(0)}'.")
+                # This block intentionally prevents the DISAMBIGUATION_RULE from running
+        if any(x in q_lower for x in ["cli", "fdd", "dth", "tcl", "subtype"]):
+            extra_rules += self.SUBTYPE_RULES
+            
+        
+        # if any(x in q_lower for x in ["committee", "member", "chairperson", "secretariat", "head of department"]):
+        #     extra_rules += self.COMMITTEE_RULES
 
-    ---
-    Answer:
-    """)
+        # --- Core system prompt ---
+        # --- Core system prompt ---
+        template = """
+        You are **Thinkpalm’s Corporate Knowledge Assistant**.
+        Your job is to produce an **exact, policy-faithful answer** using *only* the information from the Document Context below.
+
+        Guidelines:
+        1. Use the conversation history below to understand the topic and follow-up questions.
+        2. If the question refers to "it", "this", or "explain again", look at the last assistant response in the history.
+        3. Only use the provided context for factual information — do not invent details.
+        4. Answer **only** from the provided context.  
+            - If not enough info exists, reply exactly:  
+            "I do not have sufficient information in the available policy context to answer that."
+        5. Use **verbatim wording** for entities such as "Authorised Approver", "Co-Management Dept.", "Deliberation", "Review", "CC", "Chairperson", "Head of Department", and "Secretariat". 
+        6. Do **not** summarize, rename, or interpret policies — **copy exact table lines that apply.**
+        <--- REMOVE OLD GUIDELINE 7 HERE --->
+        7. Merge related clauses logically if they describe the same policy action (e.g., "Novation", "Amendment"). (Note: This was Guideline 8, keep it for now if needed, but be aware of the risk)
+        8. When multiple departments or thresholds appear, clearly state which rule applies and under what condition. (Note: This was Guideline 9)
+        9. Maintain a concise, professional format: (Note: This was Guideline 10)
+            - **Opening Summary:** one line answering the question directly.
+            - **Details:** **Create this section by copying the exact committee roles (Chairperson, Members, Sub-members) and their associated entities VERBATIM from the cleaned Document Context.**
+            - **Conclusion:** short sentence summarizing the rule or required action.
+
+        {extra_rules}
+
+        INPUTS
+        ### Context
+        {context}
+
+        """
+        return ChatPromptTemplate.from_template(template.replace("{extra_rules}", extra_rules))
+            
+
+
 
     
-    def _build_rag_chain(self):
+    def _build_rag_chain(self, question):
         """Create the retrieval + generation chain with selective memory-based rewriting."""
-        prompt = self._build_prompt_template()
+        
 
         # ⚡️ Pronoun / vague reference detector
         PRONOUN_PATTERN = re.compile(
@@ -426,14 +654,44 @@ class ThinkpalmRAG:
         def retrieve_with_rewrite(inputs):
             """Rewrite the question, then search Cosmos with rewritten text."""
             rewritten = rewrite_question(inputs)
-            docs = self.search_cosmos_documents(rewritten["question"])
+            
+            # 🧠 Enrich the question with retrieval hints
+            hinted_query = self._add_retrieval_hints(rewritten["question"])
+            # print(f"[DEBUG] Retrieval query with hints:\n{hinted_query}")
+
+            # 🔍 Use enriched question text for vector search
+            # docs = self.search_cosmos_documents(rewritten["question"])
+            docs = self.search_cosmos_documents(hinted_query) 
+            
+            for i, d in enumerate(docs):
+                preview = d.page_content.replace("\n", " ").strip()[:180]
+                score = d.metadata.get("score", 0)
+                print(f"[DEBUG] Doc {i+1} | Score: {score:.3f} | Snippet: {preview}...")
+
+            # Save full retrieval trace for external inspection
+            with open("Verification_retrieved_docs.txt", "a", encoding="utf-8") as f:
+                f.write(f"\n\n==============================\n")
+                f.write(f"Timestamp: {datetime.utcnow().isoformat()}\n")
+                f.write(f"Question: {question}\n")
+                f.write(f"Rewritten Query: {rewritten['question']}\n")
+                f.write(f"Hinted query: {hinted_query}\n")
+                for i, d in enumerate(docs):
+                    text = d.page_content
+                    score = d.metadata.get("score", 0)
+                    f.write(f"Doc {i+1} (Score {score:.3f}):\n{text}\n\n")
+                    
+                
             return {
-                "context_docs": docs,
+                "context": docs,
                 "user_id": rewritten["user_id"],
                 "question": rewritten["question"],
             }
 
+        prompt = self._build_prompt_template(question)
+        
+                
 
+        
         # Step 4️⃣ — Full chain
         return (
             RunnableLambda(retrieve_with_rewrite)
@@ -455,10 +713,12 @@ class ThinkpalmRAG:
         print(f"💬 Asking: {question}")
         
         inputs = {"user_id": user_id, "question": question}
+        self.rag_chain = self._build_rag_chain(question)
         response = self.rag_chain.invoke(inputs)
         
         docs = self.search_cosmos_documents(question)
-        self.update_chat_memory(user_id, question, response)
+        
+        # self.update_chat_memory(user_id, question, response)
         
         return response, docs
     
@@ -592,7 +852,7 @@ class EvaluatorNode:
     """
     An LLM-as-a-Judge node that evaluates RAG output based on Faithfulness and Relevance.
     """
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0):
+    def __init__(self, model_name: str = "gpt-4.1", temperature: float = 0):
         # The LLM setup for the Judge: uses structured output for reliable parsing
         self.llm = ChatOpenAI(model=model_name, temperature=temperature)
         self.structured_llm = self.llm.with_structured_output(RAGEvaluation)
@@ -606,7 +866,8 @@ class EvaluatorNode:
         Executes the evaluation chain and updates the state.
         
         Expected State Keys:
-        - "question": str
+en("debug_context.txt", "w") as f:
+        #     f.write        - "question": str
         - "initial_answer": str
         - "retrieved_docs": List[Document]
         """
@@ -616,8 +877,7 @@ class EvaluatorNode:
         context = "\n\n---\n\n".join(
             [f"Source {i+1}: {d.page_content}" for i, d in enumerate(state.get("retrieved_docs", []))]
         )
-        # with open("debug_context.txt", "w") as f:
-        #     f.write(context)
+        # with op(context)
         
         try:
             # 1. Run the LLM-as-a-Judge Chain
