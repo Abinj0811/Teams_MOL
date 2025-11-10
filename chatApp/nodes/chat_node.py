@@ -55,7 +55,7 @@ class ThinkpalmRAG:
         self.chat_memory = {}  # { user_id: deque([(user_msg, assistant_msg), ...]) }
         self.last_sync_counter = {}   # track per-user unsynced turns
         self.history_limit = 5
-        self.autosave_interval = 3  
+        self.autosave_interval = 10
         
         self.COMMITTEE_RULES = """
             If the question involves a committee:
@@ -66,8 +66,25 @@ class ThinkpalmRAG:
         self.COST_RULES = """
             If the question concerns cost, budget, or amount:
             - Determine approval thresholds by total category amount.
-            - Include authorised approvers, reviews, and reports exactly as stated.
             - Do not merge unrelated categories.
+            - Include authorised approvers, reviews, and reports exactly as stated.
+            
+            For multi-cost or multi-item questions, follow these rules:
+
+                a. **Treat each category separately:** For each transaction category (e.g., Implementation, Maintenance), sum all relevant amounts across sub-allocations (MCT, UNIX, subsidiaries, etc.) to determine the total cost for that category. Do NOT separate by internal allocations.
+
+                b. **Identify Categories:** Determine the distinct approval categories and their specific thresholds based on the total category amount.
+                    * Implementation / New System → "Acquisition, disposal of IT related fixed assets"
+                    * Maintenance / Service Contract → "IT-related service agreements"
+
+                c. **Extract All Details:** For each category, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, etc.) from the Document Context that matches the applicable threshold.
+
+                d. **Final Rule Application:** State the final business rule that governs the submission based on total category amounts.
+
+                e. **Output Format for Multiple Categories:**
+                    A) For [First Transaction Category] — [total amount + approval details].  
+                    B) For [Second Transaction Category] — [total amount + approval details].  
+                    Then add a short **“Conclusion”** explaining the overall rule.
             """
         self.DISAMBIGUATION_RULE = """
             If the question concerns acquisition/cost/disposal but does not explicitly use terms like 'IT', 'Information Technology', 'ICS', or 'DXS', **prioritize the policy section labeled 'Excluding IT related assets'** over policies labeled 'IT related assets'.
@@ -85,6 +102,7 @@ class ThinkpalmRAG:
             - Identify the responsible department exactly as shown in context.
             - Prefer subtype-specific rules over general ones.
             """
+            
 
         # ========== CLIENTS ==========
         self.client = CosmosClient(url=self.cosmos_endpoint, credential=self.cosmos_key)
@@ -527,11 +545,14 @@ class ThinkpalmRAG:
     CRITICAL PRE-FILTER: If the question contains the qualifier 'Less than' or 'Under', you are absolutely FORBIDDEN from selecting any policy line that contains the phrase 'or more'. Disregard that line entirely, regardless of the amount.
         """
         self.FINAL_PRIORITIZATION_RULE = """
-    CRITICAL FINANCIAL RULE: Use the HINTS as the source of truth to select the policy line from the context, following this order of precedence:
-    1.  **DIRECT CONTEXT MATCH:** Check if any policy line in the context **EXACTLY MATCHES** an explicit threshold phrase found in the HINTS (e.g., 'Less than US$50,000'). If an exact line match is found, you **MUST** select that line, and *DISCRAD ANYTHING UNRELATED FROM THAT CONTEXT, BUT PICK LINES RELEVANT TO THE QUESTION*. Do not proceed to Rule 2.
-    2.  **CLOSEST VALUE FALLBACK:** If no exact policy line match is found in the context (Rule 1 fails), you MUST use the dollar amount from the HINTS (e.g., 'US$ 8,300') to choose the policy line with the **closest and most restrictive** threshold that covers that amount.
-        * **Restrictiveness:** For 'Less than' amounts, pick the lowest policy limit that still covers the dollar amount (e.g., for an amount of $8,300, select the $25,000 policy over the $50,000 policy).
-    """
+        CRITICAL FINANCIAL PRIORITY RULE:
+        When the context contains multiple monetary thresholds (e.g., US$25,000, US$50,000, US$500,000):
+        1. Always apply **numeric reasoning** based on the question’s hinted amount (e.g., "about US$8,300" → select "Less than US$25,000").
+        2. You must **completely ignore any line** containing "or more" when the question includes "Less than" or a smaller amount.
+        3. Select the **lowest valid threshold** that still covers the amount (most restrictive policy).
+        4. Never choose higher thresholds just because they appear earlier or look more detailed.
+        5. The selected line must explicitly mention the same or smaller range as the question’s hint amount.
+        """
         # --- Dynamically build extra rules based on keywords ---
         extra_rules = ""
         q_lower = question.lower()
@@ -544,8 +565,9 @@ class ThinkpalmRAG:
             # # 1. ENFORCE HARD EXCLUSION FIRST (This is the necessary fix)
             if re.search(r"less than|under", q_lower, flags=re.I):
                 extra_rules += self.HARD_EXCLUSION_RULE
-            extra_rules += self.FINAL_PRIORITIZATION_RULE 
-            
+             
+            extra_rules += self.FINAL_PRIORITIZATION_RULE  # Moved up here
+
             # 1. Create a regex pattern that matches any of these terms as a whole word (\b)
             # This pattern ensures 'it' in 'acquisition' is ignored, but 'IT' as a standalone term is matched.
             # Note: Since 'information technology' is multiple words, it doesn't need \b anchors.
@@ -577,7 +599,6 @@ class ThinkpalmRAG:
             (for example, to show whether it's "IT related" or "Excluding IT related").
             - Never include descriptive or structural headings that don’t contain actionable approver information.
             """
-
         extra_rules+= self.RELEVANT_LINE_FILTER_RULE
             
         
@@ -604,9 +625,10 @@ class ThinkpalmRAG:
             - **Opening Summary:** one line answering the question directly.
             - **Details:** **Create this section by copying the exact committee roles (Chairperson, Members, Sub-members) and their associated entities VERBATIM from the cleaned Document Context.**
             - **Conclusion:** short sentence summarizing the rule or required action.
-
-
+        10. Before finalizing your answer, re-check that the "Details" section does not contain category headers or descriptive lines unless they are required to disambiguate IT vs Non-IT context.
         {extra_rules}
+        11. Always verify that the selected policy line strictly matches the hinted monetary range 
+            (e.g., for US$8,300 → "Less than US$25,000"). Do not select any 'or more' lines.
 
         Qusetion:
         {question}
