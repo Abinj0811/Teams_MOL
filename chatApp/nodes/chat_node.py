@@ -72,12 +72,7 @@ class ThinkpalmRAG:
         self.DISAMBIGUATION_RULE = """
             If the question concerns acquisition/cost/disposal but does not explicitly use terms like 'IT', 'Information Technology', 'ICS', or 'DXS', **prioritize the policy section labeled 'Excluding IT related assets'** over policies labeled 'IT related assets'.
             """
-        self.FINAL_PRIORITIZATION_RULE = """
-    CRITICAL FINANCIAL RULE: Use the following order of precedence to select the policy line from the context:
-    1.  **EXACT MATCH PRIORITY:** If the HINTS contain a complete, explicit threshold phrase (e.g., 'Less than US$50,000' or 'US$100,000 or more'), you MUST select that exact policy line. Do not look for a more restrictive amount.
-    2.  **CLOSEST VALUE (TIE-BREAKER):** If the HINTS only contain an ambiguous dollar amount (e.g., 'US$ 8,300') AND a general qualifier (e.g., 'Less than'), you MUST choose the policy line with the **closest and most restrictive** threshold that covers the amount.
-        * For 'Less than' amounts, pick the lowest policy limit that still covers the dollar amount (e.g., $10k over $25k for an amount under $10k).
-    """
+        
             
         self.NOVATION_RULES = """
             If the question concerns novation, amendment, or cancellation:
@@ -532,9 +527,10 @@ class ThinkpalmRAG:
     CRITICAL PRE-FILTER: If the question contains the qualifier 'Less than' or 'Under', you are absolutely FORBIDDEN from selecting any policy line that contains the phrase 'or more'. Disregard that line entirely, regardless of the amount.
         """
         self.FINAL_PRIORITIZATION_RULE = """
-        CRITICAL FINAL RULE: Use the HINTS to select the correct policy line from the context, following this hierarchy:
-        1.  **DIRECT HINT MATCH:** If a specific financial threshold phrase in the HINTS (e.g., 'Less than US$50,000') **EXACTLY MATCHES** a policy line qualifier in the context, you MUST select that line. This overrides all other rules.
-        2.  **CLOSEST RESTRICTIVE FALLBACK:** If no exact match is found between the HINTS and the policy lines, you MUST find the policy line that represents the **closest and most restrictive** threshold that covers the dollar amount given in the question/hints.
+    CRITICAL FINANCIAL RULE: Use the HINTS as the source of truth to select the policy line from the context, following this order of precedence:
+    1.  **DIRECT CONTEXT MATCH:** Check if any policy line in the context **EXACTLY MATCHES** an explicit threshold phrase found in the HINTS (e.g., 'Less than US$50,000'). If an exact line match is found, you **MUST** select that line, and *DISCRAD ANYTHING UNRELATED FROM THAT CONTEXT, BUT PICK LINES RELEVANT TO THE QUESTION*. Do not proceed to Rule 2.
+    2.  **CLOSEST VALUE FALLBACK:** If no exact policy line match is found in the context (Rule 1 fails), you MUST use the dollar amount from the HINTS (e.g., 'US$ 8,300') to choose the policy line with the **closest and most restrictive** threshold that covers that amount.
+        * **Restrictiveness:** For 'Less than' amounts, pick the lowest policy limit that still covers the dollar amount (e.g., for an amount of $8,300, select the $25,000 policy over the $50,000 policy).
     """
         # --- Dynamically build extra rules based on keywords ---
         extra_rules = ""
@@ -570,6 +566,20 @@ class ThinkpalmRAG:
         if any(x in q_lower for x in ["cli", "fdd", "dth", "tcl", "subtype"]):
             extra_rules += self.SUBTYPE_RULES
             
+        self.RELEVANT_LINE_FILTER_RULE = """
+            CRITICAL OUTPUT CLEANUP RULE:
+            When preparing the "Details" section:
+            - Include only the **minimum set of policy lines** directly required to answer the question.
+            - If a line is a **category header** (e.g., starts with "Acquisition (3), disposal (4)..." or lists multiple subtypes)
+            and the selected sub-line (e.g., "Less than US$25,000 — ...") already makes the context clear,
+            you must **omit the header line** from the output.
+            - Retain the header only when it clarifies the category distinction
+            (for example, to show whether it's "IT related" or "Excluding IT related").
+            - Never include descriptive or structural headings that don’t contain actionable approver information.
+            """
+
+        extra_rules+= self.RELEVANT_LINE_FILTER_RULE
+            
         
         # if any(x in q_lower for x in ["committee", "member", "chairperson", "secretariat", "head of department"]):
         #     extra_rules += self.COMMITTEE_RULES
@@ -579,7 +589,8 @@ class ThinkpalmRAG:
         template = """
         You are **Thinkpalm’s Corporate Knowledge Assistant**.
         Your job is to produce an **exact, policy-faithful answer** using *only* the information from the Document Context below.
-
+        
+        
         Guidelines:
         1. Use the conversation history below to understand the topic and follow-up questions.
         2. If the question refers to "it", "this", or "explain again", look at the last assistant response in the history.
@@ -587,20 +598,20 @@ class ThinkpalmRAG:
         4. Answer **only** from the provided context.  
             - If not enough info exists, reply exactly:  
             "I do not have sufficient information in the available policy context to answer that."
-        5. Use **verbatim wording** for entities such as "Authorised Approver", "Co-Management Dept.", "Deliberation", "Review", "CC", "Chairperson", "Head of Department", and "Secretariat". 
         6. Do **not** summarize, rename, or interpret policies — **copy exact table lines that apply.**
-        <--- REMOVE OLD GUIDELINE 7 HERE --->
-        7. Merge related clauses logically if they describe the same policy action (e.g., "Novation", "Amendment"). (Note: This was Guideline 8, keep it for now if needed, but be aware of the risk)
         8. When multiple departments or thresholds appear, clearly state which rule applies and under what condition. (Note: This was Guideline 9)
         9. Maintain a concise, professional format: (Note: This was Guideline 10)
             - **Opening Summary:** one line answering the question directly.
             - **Details:** **Create this section by copying the exact committee roles (Chairperson, Members, Sub-members) and their associated entities VERBATIM from the cleaned Document Context.**
             - **Conclusion:** short sentence summarizing the rule or required action.
 
+
         {extra_rules}
 
-        INPUTS
-        ### Context
+        Qusetion:
+        {question}
+        
+        Context:
         {context}
 
         """
