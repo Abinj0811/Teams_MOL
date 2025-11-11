@@ -580,145 +580,182 @@ class ThinkpalmRAG:
     def _build_prompt_template(self, question: str) -> "ChatPromptTemplate":
         """
         Create a prompt that includes chat history + context + dynamic extra rules.
+        Automatically detects session (Service Agreement, Insurance, Charter, etc.)
+        and applies the appropriate rule sets while avoiding conflicts like cost overlap.
         """
 
+        # ==============================
+        # CORE RULE DEFINITIONS
+        # ==============================
+
         self.HARD_EXCLUSION_RULE = """
-    CRITICAL PRE-FILTER: If the question contains the qualifier 'Less than' or 'Under', you are absolutely FORBIDDEN from selecting any policy line that contains the phrase 'or more'. Disregard that line entirely, regardless of the amount.
+        CRITICAL PRE-FILTER:
+        If the question contains 'Less than' or 'Under', you are FORBIDDEN from selecting
+        any policy line that contains 'or more'. Ignore those lines regardless of the amount.
         """
+
         self.FINAL_PRIORITIZATION_RULE = """
         CRITICAL FINANCIAL PRIORITY RULE:
-        When the context contains multiple monetary thresholds (e.g., US$25,000, US$50,000, US$500,000):
-        1. Always apply **numeric reasoning** based on the question’s hinted amount (e.g., "about US$8,300" → select "Less than US$25,000").
-        2. You must **completely ignore any line** containing "or more" when the question includes "Less than" or a smaller amount.
-        3. Select the **lowest valid threshold** that still covers the amount (most restrictive policy).
-        4. Never choose higher thresholds just because they appear earlier or look more detailed.
-        5. The selected line must explicitly mention the same or smaller range as the question’s hint amount.
+        When multiple monetary thresholds appear (e.g., US$25,000, US$50,000, US$500,000):
+        1. Always apply numeric reasoning based on the question’s hinted amount.
+        2. Ignore any line containing 'or more' when the question includes 'Less than' or smaller amounts.
+        3. Select the lowest valid threshold that covers the amount (most restrictive).
+        4. Never choose higher thresholds because they look more detailed.
+        5. Match exactly the numeric range implied by the question.
         """
-        
+
         self.RANGE_SELECTION_RULE = """
         DURATION RANGE SELECTION RULE:
         If the question specifies a duration (e.g., 'for 3 years', '2 years period', '48 months'):
-        - Identify which policy line covers that duration (e.g., "More than 1 year and less than 5 years").
-        - Select only that line; do not include shorter or longer ranges.
+        Identify which policy line covers that duration and select only that line.
         """
+
         self.DURATION_RANGE_CONTAINMENT_RULE = """
         DURATION RANGE CONTAINMENT:
-        If the question specifies a duration (years/months/period) with an explicit number,
-        identify policy lines that represent numeric ranges or boundaries.
-        Select only the policy line(s) whose numeric range *contains* the specified duration value.
-        If more than one line contains the value, choose the most specific (narrowest) range.
-        Do NOT include lines that do not contain the value even if they look related.
+        If the question specifies a duration (years/months/period),
+        select only the policy line whose numeric range *contains* that duration.
         """
 
         self.NUMERIC_SPECIFICITY_TIEBREAK = """
         NUMERIC SPECIFICITY TIE-BREAK:
-        When multiple range lines include the value, prefer the line with the smaller interval width 
-        (i.e., most specific). If two lines have equal specificity, prefer the one that explicitly names
-        the category requested by the question (e.g., 'Charter in' vs 'Charter out').
+        When multiple lines include the value, prefer the narrower (more specific) range.
         """
-        
-        self.RELEVANT_LINE_FILTER_RULE = """
-            CRITICAL OUTPUT CLEANUP RULE:
-            When preparing the "Details" section:
-            - Include only the **minimum set of policy lines** directly required to answer the question.
-            - If a line is a **category header** (e.g., starts with "Acquisition (3), disposal (4)..." or lists multiple subtypes)
-            and the selected sub-line (e.g., "Less than US$25,000 — ...") already makes the context clear,
-            you must **omit the header line** from the output.
-            - Retain the header only when it clarifies the category distinction
-            (for example, to show whether it's "IT related" or "Excluding IT related").
-            - Never include descriptive or structural headings that don’t contain actionable approver information.
-            """
-            
-        self.SERVICE_AGREEMENT_RULE = """
-            ==============================
-            ### SERVICE AGREEMENT SESSION LOGIC
-            ==============================
 
-            If the question concerns **Conclusion**, **Termination**, or **Revision** of a Service Agreement:
-            1. Identify all departments or approvers responsible for such agreements.
-            2. Use only the policy section referring to **service agreement (conclusion / termination / revision) with MCTSPR subsidiaries**.
-            3. Do not mix with other agreement types (e.g., IT-related or charter contracts).
-            4. Include deliberation, review, and co-management details exactly as listed in context.
-            """
-        
-            
-        # --- Dynamically build extra rules based on keywords ---
-        extra_rules = ""
+        self.RELEVANT_LINE_FILTER_RULE = """
+        CRITICAL OUTPUT CLEANUP RULE:
+        Include only the minimum lines directly answering the question.
+        Omit category headers unless needed to clarify IT vs Non-IT context.
+        """
+
+        self.SERVICE_AGREEMENT_RULE = """
+        ==============================
+        ### SERVICE AGREEMENT SESSION LOGIC
+        ==============================
+        If the question concerns **Conclusion**, **Termination**, or **Revision** of a Service Agreement:
+        1. Identify all departments and approvers responsible.
+        2. Use only the policy section referring to **service agreement (conclusion/termination/revision) with MCTSPR subsidiaries**.
+        3. Do not mix with other contract types.
+        4. Include deliberation, review, and co-management exactly as stated.
+        """
+
+        self.CONTEXTUAL_FILTERING_RULES = """
+        ==============================
+        ### CONTEXTUAL FILTERING RULES
+        ==============================
+        10. If the question explicitly mentions a **policy year** (e.g., “Policy Year 2025”):
+            - Interpret it as referring to the **annual plan** for that policy year.  
+            - Only include approval criteria applicable to the annual plan.  
+            - **Exclude unrelated categories** like “Important” or “Others” unless explicitly required by the question.
+
+        11. If a **policy year** is not specified, apply general approval criteria relevant to the subject matter.
+        """
+
+        # ==============================
+        # SESSION PROFILES
+        # ==============================
+        self.SESSION_PROFILES = {
+            "service_agreement": {
+                "pattern": r"(?=.*\bservice\s+agreement\b)(?=.*\b(conclusion|terminate|termination|revise|revision|concluding|revising|terminating)\b)",
+                "rules_add": ["SERVICE_AGREEMENT_RULE"],
+                "rules_block": ["COST_RULES"],
+                "priority": 3,
+                "description": "Conclusion / Termination / Revision of Service Agreements"
+            },
+            "insurance": {
+                "pattern": r"\b(insurance|policy year|premium|renewal|p&i|cover|cli|fdd|tcl|dth)\b",
+                "rules_add": ["INSURANCE_DEPARTMENT_SUBTYPE_RULE", "CONTEXTUAL_FILTERING_RULES"],
+                "rules_block": [],
+                "priority": 2,
+                "description": "Insurance and Subtype Approvals"
+            },
+            "charter_duration": {
+                "pattern": r"\b(charter in|charter out|bare boat|time charter|period|year|month)\b",
+                "rules_add": ["RANGE_SELECTION_RULE", "DURATION_RANGE_CONTAINMENT_RULE", "NUMERIC_SPECIFICITY_TIEBREAK"],
+                "rules_block": [],
+                "priority": 1,
+                "description": "Charter contract duration-based approvals"
+            },
+        }
+
+        # ==============================
+        # SESSION DETECTION LOGIC
+        # ==============================
         q_lower = question.lower()
-        pattern = (
-            r"(?=.*\bservice\s+agreement\b)"
-            r"(?=.*\b(conclusion|terminate|termination|revise|revision|concluding|revising|terminating)\b)"
-            r"(?=.*\b(approval|approve|authorization|authorize|authorisation|approver|department|criteria)\b)"
-        )
-        if re.search(pattern, q_lower, flags=re.I):
-            print("✅ Detected 'Conclusion / Termination / Revision of Service Agreement' session.")
-            session_context = "Service Agreement - Conclusion/Termination/Revision-Approval"
+        matched_sessions = []
+        for name, profile in self.SESSION_PROFILES.items():
+            if re.search(profile["pattern"], q_lower, flags=re.I):
+                matched_sessions.append((profile["priority"], name, profile))
+
+        session_name, session_profile = (None, None)
+        if matched_sessions:
+            matched_sessions.sort(reverse=True)
+            _, session_name, session_profile = matched_sessions[0]
+            print(f"✅ Detected session: {session_profile['description']}")
         else:
-            session_context = None
-        if session_context == "Service Agreement - Conclusion/Termination/Revision-Approval":
-            extra_rules += self.SERVICE_AGREEMENT_RULE
-            
-            
-        is_service_agreement_session = bool(
-            re.search(
-                r"(?=.*\bservice\s+agreement\b)"
-                r"(?=.*\b(conclusion|terminate|termination|revise|revision|concluding|revising|terminating)\b)",
-                q_lower,
-                flags=re.I
-            )
-        )
-        if any(x in q_lower for x in ["novation", "amendment", "cancellation"]):
-            extra_rules += self.NOVATION_RULES
-            
-        if (
-            not is_service_agreement_session  # 🚫 don't apply cost rules in service agreement session
-            and any(x in q_lower for x in ["cost", "fee", "amount", "budget", "it-related", "acquisition", "disposal"])
-        ):            
+            print("ℹ️ No specific session detected; applying generic logic.")
+
+        # ==============================
+        # DYNAMIC RULE BUILDING
+        # ==============================
+        extra_rules = ""
+        blocked = set(session_profile["rules_block"]) if session_profile else set()
+
+        # Add session-specific rules first (if any)
+        if session_profile:
+            for rule in session_profile["rules_add"]:
+                extra_rules += getattr(self, rule)
+
+        # Apply generic rules only if not blocked by session
+        if "COST_RULES" not in blocked and any(x in q_lower for x in ["cost", "fee", "amount", "budget", "it-related", "acquisition", "disposal"]):
             extra_rules += self.COST_RULES
-            # 1. Enforce Qualifier Priority
-            # # 1. ENFORCE HARD EXCLUSION FIRST (This is the necessary fix)
             if re.search(r"less than|under", q_lower, flags=re.I):
                 extra_rules += self.HARD_EXCLUSION_RULE
-             
-            extra_rules += self.FINAL_PRIORITIZATION_RULE  # Moved up here
-            extra_rules += self.DISAMBIGUATION_RULE 
-            # --- Duration-based logic (applies only to 'year' or 'month' type queries) ---
+            extra_rules += self.FINAL_PRIORITIZATION_RULE
+            extra_rules += self.DISAMBIGUATION_RULE
+
+        # Duration-based logic
         if re.search(r"\b(year|years|month|months|period)\b", q_lower, flags=re.I):
             extra_rules += self.RANGE_SELECTION_RULE
             extra_rules += self.DURATION_RANGE_CONTAINMENT_RULE
             extra_rules += self.NUMERIC_SPECIFICITY_TIEBREAK
-                
-        # --- Insurance / Subtype-based logic ---
-        if re.search(r"\b(insurance|policy year|premium|renewal|p&i|cover)\b", q_lower, flags=re.I):
-            extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE
-        elif re.search(r"\b(cli|fdd|tcl|dth)\b", q_lower, flags=re.I):
-            extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE        
 
-        extra_rules+= self.RELEVANT_LINE_FILTER_RULE
+        # Add contextual filtering when "policy year" appears (global override)
+        if re.search(r"\bpolicy\s+year\b", q_lower, flags=re.I):
+            extra_rules += self.CONTEXTUAL_FILTERING_RULES
 
-        # --- Core system prompt ---
-        template = """
+        # Insurance subtype logic (only if not handled by service_agreement)
+        if not session_profile or session_name != "service_agreement":
+            if re.search(r"\b(insurance|policy year|premium|renewal|p&i|cover)\b", q_lower, flags=re.I):
+                extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE
+            elif re.search(r"\b(cli|fdd|tcl|dth)\b", q_lower, flags=re.I):
+                extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE
+
+        # Always add final cleanup rule
+        extra_rules += self.RELEVANT_LINE_FILTER_RULE
+
+        # ==============================
+        # FINAL PROMPT TEMPLATE
+        # ==============================
+        template = f"""
         You are **Thinkpalm’s Corporate Knowledge Assistant**.
         Your job is to produce an **exact, policy-faithful answer** using *only* the information from the Document Context below.
-        
-        
+
         Guidelines:
         1. Use the conversation history below to understand the topic and follow-up questions.
         2. If the question refers to "it", "this", or "explain again", look at the last assistant response in the history.
         3. Only use the provided context for factual information — do not invent details.
-        4. Answer **only** from the provided context.  
+        4. Answer **only** from the provided context.
             - If not enough info exists, reply exactly:  
             "I do not have sufficient information in the available policy context to answer that."
-        6. Do **not** summarize, rename, or interpret policies — **copy exact table lines that apply.**
-        8. When multiple departments or thresholds appear, clearly state which rule applies and under what condition. (Note: This was Guideline 9)
-        9. Maintain a concise, professional format: (Note: This was Guideline 10)
+        5. Do **not** summarize, rename, or interpret policies — **copy exact table lines that apply.**
+        6. Maintain the format strictly:
             - **Opening Summary:** one line answering the question directly.
-            - **Details:** **Create this section by copying the exact committee roles (Chairperson, Members, Sub-members) and their associated entities VERBATIM from the cleaned Document Context.**
-            - **Conclusion:** short sentence summarizing the rule or required action.
-        10. Before finalizing your answer, re-check that the "Details" section does not contain category headers or descriptive lines unless they are required to disambiguate IT vs Non-IT context.
+            - **Details:** copy exact committee roles and approvers VERBATIM from the Document Context.
+            - **Conclusion:** short summary of the required approval or process.
+        7. When multiple departments or thresholds appear, clearly state which rule applies and under what condition.
+        8. Before finalizing, ensure the "Details" section does not contain unnecessary category headers.
         {extra_rules}
-        11. Always verify that the selected policy line strictly matches the hinted monetary range 
-            (e.g., for US$8,300 → "Less than US$25,000"). Do not select any 'or more' lines.
+        9. Always verify that the selected policy line matches the question's numeric or duration context.
 
         ==============================
         ### QUESTION
@@ -728,21 +765,21 @@ class ThinkpalmRAG:
         ==============================
         ### DOCUMENT CONTEXT
         ==============================
-        {context}
+        {{context}}
 
         ==============================
         ### MULTIPLE CATEGORY HANDLING
         ==============================
-        If multiple applicable policy sections (e.g., IT-related and Excluding IT-related) are found, 
+        If multiple applicable policy sections (e.g., IT-related and Excluding IT-related) are found,
         list each separately using clear headers ("For IT-related assets", "For Non-IT-related assets").
-        Do not merge their details or combine thresholds.
+        Do not merge their details.
 
         ==============================
         ### OUTPUT
         ==============================
         Answer:
-
         """
+
         return ChatPromptTemplate.from_template(template.replace("{extra_rules}", extra_rules))
             
 
