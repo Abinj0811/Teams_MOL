@@ -39,7 +39,13 @@ import json
 import uuid
 load_dotenv()
 
+import spacy
+nlp = spacy.load("en_core_web_sm")
 
+def extract_significant_words(sentence: str):
+    doc = nlp(sentence)
+    return [token.lemma_.lower() for token in doc if token.pos_ in {"NOUN", "PROPN", "NUM"} and not token.is_stop]
+         
 class ThinkpalmRAG:
     def __init__(self):
         # ========== CONFIG ==========
@@ -67,7 +73,7 @@ class ThinkpalmRAG:
             If the question concerns cost, budget, or amount:
             - Determine approval thresholds by total category amount.
             - Do not merge unrelated categories.
-            - Include authorised approvers, reviews, and reports exactly as stated.
+            - Include authorised approvers, reviews, CC, and reports exactly as stated.
             
             For multi-cost or multi-item questions, follow these rules:
 
@@ -77,7 +83,7 @@ class ThinkpalmRAG:
                     * Implementation / New System → "Acquisition, disposal of IT related fixed assets"
                     * Maintenance / Service Contract → "IT-related service agreements"
 
-                c. **Extract All Details:** For each category, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, etc.) from the Document Context that matches the applicable threshold.
+                c. **Extract All Details:** For each category, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, CC etc.) from the Document Context that matches the applicable threshold.
 
                 d. **Final Rule Application:** State the final business rule that governs the submission based on total category amounts.
 
@@ -87,8 +93,20 @@ class ThinkpalmRAG:
                     Then add a short **“Conclusion”** explaining the overall rule.
             """
         self.DISAMBIGUATION_RULE = """
-            If the question concerns acquisition/cost/disposal but does not explicitly use terms like 'IT', 'Information Technology', 'ICS', or 'DXS', **prioritize the policy section labeled 'Excluding IT related assets'** over policies labeled 'IT related assets'.
-            """
+        CATEGORY SELECTION & MERGE RULE:
+        - If the question explicitly mentions 'IT', 'information technology', 'software', 'DXS', or 'ICS', use **only the IT-related assets** section.
+        - If the question explicitly says 'Excluding IT' or 'Non-IT', use **only the Excluding IT-related assets** section.
+        - If the question does NOT mention either IT or Non-IT, you must:
+            1. Identify both **IT-related** and **Excluding IT-related** sections in the context.
+            2. Select the relevant threshold line (e.g., 'Less than US$50,000') separately within each section.
+            3. Present both results distinctly in the output, using format:
+
+            **For IT-related assets:**  
+            - [threshold line]
+
+            **For Non-IT-related assets:**  
+            - [threshold line]
+        """
         
             
         self.NOVATION_RULES = """
@@ -97,10 +115,20 @@ class ThinkpalmRAG:
             - Include deliberations, reviews, and co-management departments verbatim.
             """
 
-        self.SUBTYPE_RULES = """
-            If the question mentions specific subtypes (CLI, FDD, DTH, TCL):
-            - Identify the responsible department exactly as shown in context.
-            - Prefer subtype-specific rules over general ones.
+        self.INSURANCE_DEPARTMENT_SUBTYPE_RULE = """
+            ==============================
+            ### DEPARTMENT & SUBTYPE LOGIC
+            ==============================
+
+            7. If the question or context mentions a **subtype** (e.g., CLI, FDD, DTH, TCL):
+            - Identify and include the **specific department** responsible for that subtype, even if another department handles broader or related categories.  
+            - Example mappings:
+                - “FDD”, “TCL”, “DTH” → Business Planning Department  
+                - “P&I (General)” → Ship Management Department  
+
+            8. When multiple departments appear:
+            - Apply the **most specific rule** (the subtype’s department takes precedence).  
+            - Mention both departments only if the Document Context shows overlapping responsibilities.
             """
             
 
@@ -306,15 +334,15 @@ class ThinkpalmRAG:
             text = doc.page_content
             
             # 1. Replace symbols with standard list markers
-            text = text.replace('◎', '*').replace('○', '*').replace('△', '*')
+            text = text.replace('◎', '*').replace('○', '*').replace('△', '*').replace(' ', '')
             
             # 2. REMOVE ALL CLASSIFICATION TAGS
             text = text.replace('(EXECUTIVEOFFICERS)', '').replace('(GLOBAL/REGIONALDIRECTORS)', '')
             
             # 3. Clean up phrasing (to isolate the roles more clearly)
-            text = text.replace(' is the Chairperson of the ShipManagementCommittee.', ' (Chairperson)')
-            text = text.replace('Members of the ShipManagementCommittee are:', 'Members:')
-            text = text.replace('Sub-members of the ShipManagementCommittee are:', 'Sub-members:')
+            # text = text.replace(' is the Chairperson of the ShipManagementCommittee.', ' (Chairperson)')
+            # text = text.replace('Members of the ShipManagementCommittee are:', 'Members:')
+            # text = text.replace('Sub-members of the ShipManagementCommittee are:', 'Sub-members:')
             
             # 4. Strip extra whitespace that might have been introduced
             text = text.strip()
@@ -429,6 +457,16 @@ class ThinkpalmRAG:
             return f"US$ {s}"
 
         normalized_hints = []
+        pattern = (
+            r"(?=.*\bservice\s+agreement\b)"
+            r"(?=.*\b(conclusion|terminate|termination|revise|revision|concluding|revising|terminating)\b)"
+            r"(?=.*\b(approval|approve|authorization|authorize|authorisation|approver|department|criteria)\b)"
+        )
+        if re.search(pattern, text.lower(), flags=re.I):
+            print("✅ Detected 'Conclusion / Termination / Revision of Service Agreement' session.")
+            normalized_hints = ['Conclusion/Termination/Revision of service agreement with MCTSPR subsidiaries']
+            return "\n\nHINTS: " + "; ".join(list(set(normalized_hints)))
+            
         amount_value = None
 
         # --- Extract amount ---
@@ -486,8 +524,11 @@ class ThinkpalmRAG:
                 "Secretariat",
                 "Department roles",
             ]
-
-        # --- Deduplication ---
+               # --- Deduplication ---
+        if not normalized_hints:
+            normalized_hints = extract_significant_words(text)
+            if 'insurance' in text.lower():
+                normalized_hints+=['responsible dept for insurance']
         if normalized_hints:
             hints = []
             seen = set()
@@ -553,41 +594,29 @@ class ThinkpalmRAG:
         4. Never choose higher thresholds just because they appear earlier or look more detailed.
         5. The selected line must explicitly mention the same or smaller range as the question’s hint amount.
         """
-        # --- Dynamically build extra rules based on keywords ---
-        extra_rules = ""
-        q_lower = question.lower()
+        
+        self.RANGE_SELECTION_RULE = """
+        DURATION RANGE SELECTION RULE:
+        If the question specifies a duration (e.g., 'for 3 years', '2 years period', '48 months'):
+        - Identify which policy line covers that duration (e.g., "More than 1 year and less than 5 years").
+        - Select only that line; do not include shorter or longer ranges.
+        """
+        self.DURATION_RANGE_CONTAINMENT_RULE = """
+        DURATION RANGE CONTAINMENT:
+        If the question specifies a duration (years/months/period) with an explicit number,
+        identify policy lines that represent numeric ranges or boundaries.
+        Select only the policy line(s) whose numeric range *contains* the specified duration value.
+        If more than one line contains the value, choose the most specific (narrowest) range.
+        Do NOT include lines that do not contain the value even if they look related.
+        """
 
-        if any(x in q_lower for x in ["novation", "amendment", "cancellation"]):
-            extra_rules += self.NOVATION_RULES
-        if any(x in q_lower for x in ["cost", "fee", "amount", "budget", "it-related", "acquisition", "disposal"]):
-            extra_rules += self.COST_RULES
-            # 1. Enforce Qualifier Priority
-            # # 1. ENFORCE HARD EXCLUSION FIRST (This is the necessary fix)
-            if re.search(r"less than|under", q_lower, flags=re.I):
-                extra_rules += self.HARD_EXCLUSION_RULE
-             
-            extra_rules += self.FINAL_PRIORITIZATION_RULE  # Moved up here
-
-            # 1. Create a regex pattern that matches any of these terms as a whole word (\b)
-            # This pattern ensures 'it' in 'acquisition' is ignored, but 'IT' as a standalone term is matched.
-            # Note: Since 'information technology' is multiple words, it doesn't need \b anchors.
-            pattern = r"\b(it|ics|dxs)\b"  # Whole word match for short terms
-            pattern += r"|information technology|it-related" # Substring match for multi-word/hyphenated terms
-
-            # 2. Check the query string using the robust regex
-            it_term_found = re.search(pattern, q_lower)
-
-            if it_term_found is None:
-                # ✅ Inject the rule because it's a general cost question
-                print("✅ DISAMBIGUATION ACTIVE: No IT exclusion terms found. Injecting 'Excluding IT' rule.")
-                extra_rules += self.DISAMBIGUATION_RULE
-            else:
-                # 🛑 If a match object exists (meaning an IT term was found)
-                print(f"⚠️ DISAMBIGUATION SKIPPED: The IT exclusion pattern was found: '{it_term_found.group(0)}'.")
-                # This block intentionally prevents the DISAMBIGUATION_RULE from running
-        if any(x in q_lower for x in ["cli", "fdd", "dth", "tcl", "subtype"]):
-            extra_rules += self.SUBTYPE_RULES
-            
+        self.NUMERIC_SPECIFICITY_TIEBREAK = """
+        NUMERIC SPECIFICITY TIE-BREAK:
+        When multiple range lines include the value, prefer the line with the smaller interval width 
+        (i.e., most specific). If two lines have equal specificity, prefer the one that explicitly names
+        the category requested by the question (e.g., 'Charter in' vs 'Charter out').
+        """
+        
         self.RELEVANT_LINE_FILTER_RULE = """
             CRITICAL OUTPUT CLEANUP RULE:
             When preparing the "Details" section:
@@ -599,13 +628,74 @@ class ThinkpalmRAG:
             (for example, to show whether it's "IT related" or "Excluding IT related").
             - Never include descriptive or structural headings that don’t contain actionable approver information.
             """
-        extra_rules+= self.RELEVANT_LINE_FILTER_RULE
             
-        
-        # if any(x in q_lower for x in ["committee", "member", "chairperson", "secretariat", "head of department"]):
-        #     extra_rules += self.COMMITTEE_RULES
+        self.SERVICE_AGREEMENT_RULE = """
+            ==============================
+            ### SERVICE AGREEMENT SESSION LOGIC
+            ==============================
 
-        # --- Core system prompt ---
+            If the question concerns **Conclusion**, **Termination**, or **Revision** of a Service Agreement:
+            1. Identify all departments or approvers responsible for such agreements.
+            2. Use only the policy section referring to **service agreement (conclusion / termination / revision) with MCTSPR subsidiaries**.
+            3. Do not mix with other agreement types (e.g., IT-related or charter contracts).
+            4. Include deliberation, review, and co-management details exactly as listed in context.
+            """
+        
+            
+        # --- Dynamically build extra rules based on keywords ---
+        extra_rules = ""
+        q_lower = question.lower()
+        pattern = (
+            r"(?=.*\bservice\s+agreement\b)"
+            r"(?=.*\b(conclusion|terminate|termination|revise|revision|concluding|revising|terminating)\b)"
+            r"(?=.*\b(approval|approve|authorization|authorize|authorisation|approver|department|criteria)\b)"
+        )
+        if re.search(pattern, q_lower, flags=re.I):
+            print("✅ Detected 'Conclusion / Termination / Revision of Service Agreement' session.")
+            session_context = "Service Agreement - Conclusion/Termination/Revision-Approval"
+        else:
+            session_context = None
+        if session_context == "Service Agreement - Conclusion/Termination/Revision-Approval":
+            extra_rules += self.SERVICE_AGREEMENT_RULE
+            
+            
+        is_service_agreement_session = bool(
+            re.search(
+                r"(?=.*\bservice\s+agreement\b)"
+                r"(?=.*\b(conclusion|terminate|termination|revise|revision|concluding|revising|terminating)\b)",
+                q_lower,
+                flags=re.I
+            )
+        )
+        if any(x in q_lower for x in ["novation", "amendment", "cancellation"]):
+            extra_rules += self.NOVATION_RULES
+            
+        if (
+            not is_service_agreement_session  # 🚫 don't apply cost rules in service agreement session
+            and any(x in q_lower for x in ["cost", "fee", "amount", "budget", "it-related", "acquisition", "disposal"])
+        ):            
+            extra_rules += self.COST_RULES
+            # 1. Enforce Qualifier Priority
+            # # 1. ENFORCE HARD EXCLUSION FIRST (This is the necessary fix)
+            if re.search(r"less than|under", q_lower, flags=re.I):
+                extra_rules += self.HARD_EXCLUSION_RULE
+             
+            extra_rules += self.FINAL_PRIORITIZATION_RULE  # Moved up here
+            extra_rules += self.DISAMBIGUATION_RULE 
+            # --- Duration-based logic (applies only to 'year' or 'month' type queries) ---
+        if re.search(r"\b(year|years|month|months|period)\b", q_lower, flags=re.I):
+            extra_rules += self.RANGE_SELECTION_RULE
+            extra_rules += self.DURATION_RANGE_CONTAINMENT_RULE
+            extra_rules += self.NUMERIC_SPECIFICITY_TIEBREAK
+                
+        # --- Insurance / Subtype-based logic ---
+        if re.search(r"\b(insurance|policy year|premium|renewal|p&i|cover)\b", q_lower, flags=re.I):
+            extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE
+        elif re.search(r"\b(cli|fdd|tcl|dth)\b", q_lower, flags=re.I):
+            extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE        
+
+        extra_rules+= self.RELEVANT_LINE_FILTER_RULE
+
         # --- Core system prompt ---
         template = """
         You are **Thinkpalm’s Corporate Knowledge Assistant**.
@@ -630,11 +720,27 @@ class ThinkpalmRAG:
         11. Always verify that the selected policy line strictly matches the hinted monetary range 
             (e.g., for US$8,300 → "Less than US$25,000"). Do not select any 'or more' lines.
 
-        Qusetion:
+        ==============================
+        ### QUESTION
+        ==============================
         {question}
-        
-        Context:
+
+        ==============================
+        ### DOCUMENT CONTEXT
+        ==============================
         {context}
+
+        ==============================
+        ### MULTIPLE CATEGORY HANDLING
+        ==============================
+        If multiple applicable policy sections (e.g., IT-related and Excluding IT-related) are found, 
+        list each separately using clear headers ("For IT-related assets", "For Non-IT-related assets").
+        Do not merge their details or combine thresholds.
+
+        ==============================
+        ### OUTPUT
+        ==============================
+        Answer:
 
         """
         return ChatPromptTemplate.from_template(template.replace("{extra_rules}", extra_rules))
@@ -707,11 +813,12 @@ class ThinkpalmRAG:
                 f.write(f"Timestamp: {datetime.utcnow().isoformat()}\n")
                 f.write(f"Question: {question}\n")
                 f.write(f"Rewritten Query: {rewritten['question']}\n")
-                f.write(f"Hinted query: {hinted_query}\n")
                 for i, d in enumerate(docs):
                     text = d.page_content
                     score = d.metadata.get("score", 0)
                     f.write(f"Doc {i+1} (Score {score:.3f}):\n{text}\n\n")
+                f.write(f"Hinted query: {hinted_query}\n")
+                # exit()
                     
                 
             return {
@@ -750,6 +857,10 @@ class ThinkpalmRAG:
         response = self.rag_chain.invoke(inputs)
         
         docs = self.search_cosmos_documents(question)
+        with open("Verification_retrieved_docs.txt", "a", encoding="utf-8") as f:
+            f.write(f"Assistant: {response}\n")
+            f.write(f"\n\n==============================\n")
+
         
         # self.update_chat_memory(user_id, question, response)
         
