@@ -546,6 +546,68 @@ class ThinkpalmRAG:
     def _embed_query(self, query: str):
         """Get OpenAI embeddings for the query."""
         return self.embeddings.embed_query(query)
+    def _merge_and_dedup_chunks(self, main_text: str, neighbor_text: str):
+        """Merge only main + its neighbor; dedupe overlapping."""
+        if not neighbor_text:
+            return main_text
+
+        main_lines = [l.rstrip() for l in main_text.splitlines()]
+        neigh_lines = [l.rstrip() for l in neighbor_text.splitlines()]
+
+        # Normalize for dedupe
+        def norm(x):
+            x = x.strip().lower()
+            x = re.sub(r"[\*\-\u2022\u25AA\u25CF•●]", "", x)
+            x = re.sub(r"\s+", " ", x)
+            x = x.replace("us$", "$").replace("jp¥", "¥")
+            return x
+
+        main_norm = [norm(l) for l in main_lines]
+        neigh_norm = [norm(l) for l in neigh_lines]
+
+        # Remove tail->head overlap (simple boundary match)
+        max_overlap = min(20, len(main_norm), len(neigh_norm))
+
+        trimmed_main = main_lines
+        for k in range(max_overlap, 0, -1):
+            if main_norm[-k:] == neigh_norm[:k]:
+                trimmed_main = main_lines[:-k]
+                break
+
+        # Remove neighbor lines that already appear in main
+        seen = set(norm(l) for l in trimmed_main)
+        cleaned_neighbor = []
+        for raw, nr in zip(neigh_lines, neigh_norm):
+            if nr not in seen:
+                cleaned_neighbor.append(raw)
+                seen.add(nr)
+
+        return "\n".join(trimmed_main + cleaned_neighbor)
+
+
+
+
+    def _fetch_chunk_by_seq(self, doc_id: str, seq: int):
+        """Fetch a specific chunk by doc_id + seq."""
+        sql = """
+        SELECT TOP 1 c.id, c.text, c.metadata, c.source_doc_id, c.chunk_index
+        FROM c 
+        WHERE c.source_doc_id = @doc_id AND c.chunk_index = @seq
+        """
+        params = [
+            {"name": "@doc_id", "value": doc_id},
+            {"name": "@seq", "value": seq},
+        ]
+
+        items = list(self.container.query_items(
+            query=sql,
+            parameters=params,
+            enable_cross_partition_query=True
+        ))
+
+        return items[0] if items else None
+
+
 
     def search_cosmos_documents(self, query: str):
         """Perform vector search using Cosmos SQL API's VectorDistance function."""
@@ -554,18 +616,63 @@ class ThinkpalmRAG:
 
         sql = f"""
         SELECT TOP {self.top_k}
-            c.id, c.text, c.metadata,
+            c.id, c.text, c.source_doc_id, c.chunk_index,
             VectorDistance(c.vector_embedding, {emb_json}) AS score
         FROM c
         ORDER BY VectorDistance(c.vector_embedding, {emb_json})
         """
-        items = list(self.container.query_items(query=sql, enable_cross_partition_query=True))
 
-        # ✅ Return proper Document objects
-        return [
-            Document(page_content=i.get("text", ""), metadata={"id": i.get("id"), "score": i.get("score")})
-            for i in items
-        ]
+        items = list(self.container.query_items(
+            query=sql,
+            enable_cross_partition_query=True
+        ))
+
+        # Group by source_doc_id
+        grouped = {}
+        for item in items:
+            doc_id = item["source_doc_id"]
+            grouped.setdefault(doc_id, []).append(item)
+
+        final_documents = []
+
+        for doc_id, chunks in grouped.items():
+            merged_blocks = []
+
+            # Sort by sequence number
+            chunks_sorted = sorted(chunks, key=lambda x: x["chunk_index"])
+
+            for item in chunks_sorted:
+                seq = item["chunk_index"]
+                main_text = item["text"]
+
+                # Fetch NEXT chunk
+                next_item = self._fetch_chunk_by_seq(doc_id, seq + 1)
+                next_text = next_item.get("text", "") if next_item else ""
+
+                # Merge + dedup
+                merged_text = self._merge_and_dedup_chunks(main_text, next_text)
+
+                merged_blocks.append((seq, merged_text))
+
+            # Final merge of multiple selected blocks in same doc
+            merged_blocks.sort(key=lambda x: x[0])
+
+            final_text = ""
+            for _, block_text in merged_blocks:
+                if not final_text:
+                    final_text = block_text
+                else:
+                    final_text = self._merge_and_dedup_chunks(final_text, block_text)
+
+            final_documents.append(
+                Document(
+                    page_content=final_text,
+                    metadata={"doc_id": doc_id}
+                )
+            )
+
+        return final_documents
+
 
     # ------------------------------------------------------------
     # PROMPT + RAG CHAIN
@@ -649,6 +756,25 @@ class ThinkpalmRAG:
 
         11. If a **policy year** is not specified, apply general approval criteria relevant to the subject matter.
         """
+
+        # ==============================
+        # ADDITION: Minimal Multi-Topic Cost Awareness
+        # ==============================
+        def _detect_cost_topics(q: str):
+            q = q.lower()
+            topics = []
+            if re.search(r"(implement|system|software|development|upgrade|installation|new\s+system)", q):
+                topics.append("implementation")
+            if re.search(r"(maintenance|support|service contract|renewal|annual)", q):
+                topics.append("maintenance")
+            if re.search(r"(acquisition|purchase|procurement|new product)", q):
+                topics.append("acquisition")
+            if re.search(r"(disposal|write[- ]off|sell)", q):
+                topics.append("disposal")
+            return topics
+
+        # Detect cost topics for later hinting
+        detected_topics = _detect_cost_topics(question)
 
         # ==============================
         # SESSION PROFILES
