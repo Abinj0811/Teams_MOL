@@ -1071,47 +1071,29 @@ class RetrieverNode(BaseNode):
         super().__init__("RetrieverNode")
         self.rag_bot = ThinkpalmRAG()
         
-    def execute(self, state: dict):
-        
-        state["initial_answer"], state["retrieved_docs"] = self.rag_bot.ask(state["user_id"], state["question"])
-        state["rag_response"]  = state["initial_answer"]
-        # ✅ Save to memory (state + class)
-        self.rag_bot.save_to_memory(
-            state,
-            state["user_id"],
-            state["question"],
-            state["initial_answer"]
+    def execute(self, state: "ChatState") -> "ChatState":
+        # --- Run RAG ---
+        initial_answer, retrieved_docs = self.rag_bot.ask(
+            state.user_id,
+            state.question
         )
 
-        # docs = self.rag_bot.vector_store.similarity_search(state["question"], k=7)        
-        
-        return state
+        # --- Save memory (uses dict-like input, so convert state to dict) ---
+        self.rag_bot.save_to_memory(
+            state.model_dump(),     # Convert BaseModel → dict
+            state.user_id,
+            state.question,
+            initial_answer
+        )
+
+        # --- Return updated state (immutably) ---
+        return state.model_copy(update={
+            "initial_answer": initial_answer,
+            "retrieved_docs": retrieved_docs
+        })
+
     
-"""
-# evaluation with cross encoder from sentance transformers
-class EvaluatorNode:
-    def __init__(self):
-        from sentence_transformers import SentenceTransformer
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
 
-    def execute(self, state: dict):
-        ans_emb = self.model.encode(state["initial_answer"])
-        ctx_embs = self.model.encode([d.page_content for d in state["retrieved_docs"]])
-        # Compute cosine similarities
-        sims = [
-            float(np.dot(ans_emb, e) / (np.linalg.norm(ans_emb) * np.linalg.norm(e)))
-            for e in ctx_embs
-        ]
-        avg_score = float(np.mean(sims))
-
-        print(f"🧩 Relevance Score: {avg_score:.3f}")
-
-        # Save results into state
-        state["scores"] = sims
-        state["avg_score"] = avg_score
-        state["threshold_passed"] = avg_score > 0.6
-        return state
-"""
 
 # from langchain.evaluation.qa import QAEvalChain
 
@@ -1203,118 +1185,145 @@ class EvaluatorNode:
 
         print(f"✅ Evaluator initialized using model: {model_name}")
 
-    def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, state: "ChatState") -> "ChatState":
         """
-        Executes the evaluation chain and updates the state.
-        
-        Expected State Keys:
-en("debug_context.txt", "w") as f:
-        #     f.write        - "question": str
-        - "initial_answer": str
-        - "retrieved_docs": List[Document]
+        Executes the evaluation chain and updates the ChatState model.
         """
-        question = state["question"]
-        answer = state["initial_answer"]
-        # Concatenate retrieved document content into a single context string
+
+        # -----------------------------
+        # Extract needed fields
+        # -----------------------------
+        question = state.question
+        answer = state.initial_answer
+        retrieved_docs = state.retrieved_docs or []
+
+        # Build context string from retrieved documents
         context = "\n\n---\n\n".join(
-            [f"Source {i+1}: {d.page_content}" for i, d in enumerate(state.get("retrieved_docs", []))]
+            [f"Source {i+1}: {doc.page_content}" for i, doc in enumerate(retrieved_docs)]
         )
-        # with op(context)
-        
+
         try:
-            # 1. Run the LLM-as-a-Judge Chain
+            # ---------------------------------------------------
+            # 1. Run the LLM Judge (Evaluator Chain)
+            # ---------------------------------------------------
             print("\n🧠 Running LLM Judge (Evaluating Faithfulness and Relevance)...")
+
             graded_output: RAGEvaluation = self.eval_chain.invoke({
                 "question": question,
                 "answer": answer,
                 "context": context
             })
-            
-            # 2. Process Scores
+
+            # ---------------------------------------------------
+            # 2. Parse Scores
+            # ---------------------------------------------------
             faithfulness_score = 1.0 if graded_output.faithfulness_score == "YES" else 0.0
             relevance_score = 1.0 if graded_output.relevance_score == "YES" else 0.0
-            
-            # 3. Determine Overall Pass/Fail (Threshold Check)
-            # Both metrics must pass for the answer to be considered good.
-            overall_pass = (faithfulness_score == 1.0) and (relevance_score == 1.0)
-            
-            # 4. Compile summary for debugging/logging
+
+            # ---------------------------------------------------
+            # 3. Threshold Pass = Both must be "YES"
+            # ---------------------------------------------------
+            threshold_passed = (faithfulness_score == 1.0 and relevance_score == 1.0)
+
             eval_text = (
-                f"Faithfulness: {graded_output.faithfulness_score} | Reasoning: {graded_output.faithfulness_reasoning}\n"
-                f"Relevance: {graded_output.relevance_score} | Reasoning: {graded_output.relevance_reasoning}"
+                f"Faithfulness: {graded_output.faithfulness_score} | "
+                f"Reasoning: {graded_output.faithfulness_reasoning}\n"
+                f"Relevance: {graded_output.relevance_score} | "
+                f"Reasoning: {graded_output.relevance_reasoning}"
             )
-            
+
             print("--- Evaluation Result ---")
             print(eval_text)
-            print(f"Final Decision: {'PASS' if overall_pass else 'FAIL'}")
+            print(f"Final Decision: {'PASS' if threshold_passed else 'FAIL'}")
             print("-------------------------")
 
-            # 5. Update State
-            state["threshold_passed"] = overall_pass
-            state["eval_text"] = eval_text
-            state["eval_score_faithfulness"] = faithfulness_score
-            state["eval_score_relevance"] = relevance_score
+            # ---------------------------------------------------
+            # 4. Update State (BaseModel → assign fields directly)
+            # ---------------------------------------------------
+            state.threshold_passed = threshold_passed
+            state.eval_text = eval_text
+            state.eval_score_faithfulness = faithfulness_score
+            state.eval_score_relevance = relevance_score
 
         except Exception as e:
             print(f"❌ Evaluation failed due to an error: {e}")
-            state["threshold_passed"] = False
-            state["eval_text"] = f"Error during evaluation: {e}"
-            state["eval_score_faithfulness"] = 0.0
-            state["eval_score_relevance"] = 0.0
-            
+
+            state.threshold_passed = False
+            state.eval_text = f"Error during evaluation: {e}"
+            state.eval_score_faithfulness = 0.0
+            state.eval_score_relevance = 0.0
+
         return state
+
 
 
 class RerankNode:
     def __init__(self):
         self.model = CrossEncoder("BAAI/bge-reranker-large")
 
-    def execute(self, state: dict):
-        question = state["question"]
-        docs = state["retrieved_docs"]
+    def execute(self, state: "ChatState") -> "ChatState":
+        question = state.question
+        docs = state.retrieved_docs
+
+        if not docs:
+            return state
+
         pairs = [(question, d.page_content) for d in docs]
         scores = self.model.predict(pairs)
-        print("from reranked node", scores)
-        ranked_docs = [d for _, d in sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)]
-        state["filtered_docs"] = ranked_docs[:5]  # top 5
-        return state
+        print("🔄 Reranker scores:", scores)
+
+        ranked_docs = [
+            d for _, d in sorted(zip(scores, docs), key=lambda x: x[0], reverse=True)
+        ]
+
+        # Update state using .copy(update={})
+        return state.copy(update={
+            "filtered_docs": ranked_docs[:5]
+        })
+
 
 
 class GenerationNode:
     def __init__(self, llm):
         self.llm = llm
 
-    def execute(self, state: dict) -> dict:
-        context = state.get("final_context", [])
-        question = state.get("question", "")
-        # Create prompt
-        prompt = f"Answer the question based only on the context below:\n\n{context}\n\nQ: {question}\nA:"
-        # Use LLM to generate
+    def execute(self, state: "ChatState") -> "ChatState":
+        question = state.question
+        docs = state.filtered_docs or state.retrieved_docs
+
+        # Build context text
+        context = "\n\n---\n\n".join(
+            [d.page_content for d in docs]
+        )
+
+        prompt = (
+            "Answer the question based ONLY on the context below.\n\n"
+            f"{context}\n\n"
+            f"Q: {question}\nA:"
+        )
+
         response = self.llm.invoke(prompt)
-        state["answer"] = response.content if hasattr(response, "content") else str(response)
-        state["rag_response"] = state["answer"]
-        
-        
-        return state
-    
+        answer_text = response.content if hasattr(response, "content") else str(response)
+
+        return state.copy(update={
+            "answer": answer_text,
+            "rag_response": answer_text,
+            "final_context": context
+        })
 
 
 from langchain_core.language_models import BaseChatModel # Use BaseChatModel for type hinting
 from langchain_core.documents import Document
-
 class RegenerateNode:
     """
-    A node for conditional re-generation of the answer. 
-    It leverages the LLM Judge's evaluation feedback to improve the answer.
-    Now includes internal Query Refinement before regeneration.
+    Node for conditional re-generation of the answer.
+    Includes internal Query Refinement before regeneration.
     """
 
     def __init__(self, llm: BaseChatModel, refiner_llm: BaseChatModel = None):
         self.llm = llm
-        # Lightweight refiner model (can reuse llm if not given)
         self.refiner_llm = refiner_llm or llm  
 
-        # Define the query refiner prompt
         self.refine_prompt = ChatPromptTemplate.from_template("""
 You are a query refiner for retrieval-based QA.
 Rewrite the given question so it is explicit, unambiguous, and retrieval-optimized.
@@ -1328,58 +1337,85 @@ Refined:
     def refine_query(self, question: str) -> str:
         """Refine the user's question for better retrieval or regeneration context."""
         try:
-            refined = self.refiner_llm.invoke(self.refine_prompt.format(question=question))
-            refined_text = refined.content.strip() if hasattr(refined, "content") else str(refined).strip()
+            refined = self.refiner_llm.invoke(
+                self.refine_prompt.format(question=question)
+            )
+            refined_text = (
+                refined.content.strip()
+                if hasattr(refined, "content")
+                else str(refined).strip()
+            )
             print(f"🪄 Refined Query: {refined_text}")
             return refined_text
         except Exception as e:
             print(f"⚠️ Query refinement failed: {e}")
-            return question  # fallback to original
+            return question
 
-    def execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+    # -------------------------------------------------------------------------
+    #                           UPDATED EXECUTE()
+    # -------------------------------------------------------------------------
+    def execute(self, state: "ChatState") -> "ChatState":
         """
-        Conditionally regenerates the answer using the judge's feedback if evaluation fails.
-        Now refines the query internally before re-generation.
+        Regenerates the answer ONLY when evaluation failed.
         """
-        # If evaluation passed, skip regeneration
-        if state.get("threshold_passed", False):
+
+        # ------------------------------------
+        # PASS CASE → No regeneration needed
+        # ------------------------------------
+        if state.threshold_passed:
             print("🧠 Evaluation passed. No regeneration needed.")
-            return {**state, "final_answer": state["initial_answer"]}
+            state.final_answer = state.initial_answer
+            return state
 
         print("\n🔄 Evaluation failed. Initiating Regenerate Node...")
 
-        # Retrieve documents
-        docs: List[Document] = state.get("filtered_docs") or state.get("retrieved_docs") or []
-        if not docs:
-            final_answer = "I’m sorry, I don’t have that information. No relevant documents were retrieved for this query."
-            print("⚠️ Regeneration halted: No documents available for context.")
-            return {**state, "final_answer": final_answer}
+        # ------------------------------------
+        # Retrieve necessary fields
+        # ------------------------------------
+        original_question = state.question
+        initial_answer = state.initial_answer
+        eval_text = state.eval_text
+        docs = state.filtered_docs or state.retrieved_docs or []
 
-        # 🔍 Refine the query before using it in regeneration
-        original_question = state["question"]
+        if not docs:
+            print("⚠️ Regeneration halted: No retrieved documents.")
+            state.final_answer = (
+                "I’m sorry, I don’t have that information. No documents were found."
+            )
+            return state
+
+        # ------------------------------------
+        # Build context string
+        # ------------------------------------
+        context = "\n\n---\n\n".join(
+            [f"Source {i+1}: {d.page_content}" for i, d in enumerate(docs)]
+        )
+
+        # ------------------------------------
+        # Step 1: Internal Query Refinement
+        # ------------------------------------
         refined_question = self.refine_query(original_question)
 
-        context = "\n\n---\n\n".join([f"Source {i+1}: {d.page_content}" for i, d in enumerate(docs)])
-        initial_answer = state["initial_answer"]
-        eval_text = state.get("eval_text", "Evaluation feedback was unavailable.")
-
-        # Build improved regeneration prompt
-        # 4. Base your answer strictly on the provided context or semantically related items within it.If the answer is not available, respond with: "I’m sorry, I don’t have that information."
-
+        # Short rephrase step using same LLM
         rephrase_prompt = f"""
-Rephrase the following question to maximize semantic match 
-with company policy and approval documents. 
-Include equivalent or related terms (e.g., synonyms, abbreviations, departmental terms).
+Rephrase the following question to maximize semantic alignment 
+with internal policy documentation.
 
 Question:
 {original_question}
 """
-        rephrase_result = self.llm.invoke(rephrase_prompt)
-        refined_question = rephrase_result.content.strip()
-        REGEN_PROMPT_TEMPLATE = """
-You are a chatbot assistant for MOL Chemical Tankers, designed to provide precise and accurate answers based solely on the provided context. 
+        refined_q_result = self.llm.invoke(rephrase_prompt)
+        refined_question = refined_q_result.content.strip()
 
-Your previous answer failed evaluation. Use the critique and refined query to correct it.
+        # ------------------------------------
+        # Step 2: Build Regeneration Prompt
+        # ------------------------------------
+        REGEN_PROMPT_TEMPLATE = """
+You are a chatbot assistant for MOL Chemical Tankers, providing precise and accurate
+answers based strictly on the provided context.
+
+Your previous answer failed evaluation. Use the critique and refined question
+to correct the answer.
 
 ---
 **REFINED QUESTION:** {refined_question}
@@ -1394,36 +1430,38 @@ Your previous answer failed evaluation. Use the critique and refined query to co
 ---
 **AVAILABLE CONTEXT:**
 {context}
----
 
-**INSTRUCTIONS FOR RE-GENERATION:**
-1. Address all issues mentioned in the critique.
-2. Remove unsupported or irrelevant content.
-3. Your answer must be based on the provided context only.
-4. Be concise, accurate, and professional.
+---
+**REGENERATION INSTRUCTIONS**
+1. Fix all issues highlighted by the evaluation critique.
+2. Remove any unsupported or hallucinated details.
+3. Base the answer **only** on provided context.
+4. If answer is not found, say: "I’m sorry, I don’t have that information."
+5. Be clear, concise, and professional.
 
 **NEW, CORRECTED ANSWER:**
 """
 
         regeneration_prompt = REGEN_PROMPT_TEMPLATE.format(
-        refined_question=refined_question,
-        original_question=original_question,
-        initial_answer=initial_answer,
-        eval_text=eval_text,
-        context=context
-    )
+            refined_question=refined_question,
+            original_question=original_question,
+            initial_answer=initial_answer,
+            eval_text=eval_text,
+            context=context
+        )
 
-        answer_result = self.llm.invoke(regeneration_prompt)
+        # ------------------------------------
+        # Step 3: Regenerate using LLM
+        # ------------------------------------
+        result = self.llm.invoke(regeneration_prompt)
+        final_answer = result.content.strip()
 
-        new_answer = answer_result.content.strip()
-        state["rag_response"] = new_answer 
-        state["regeneration_count"] = state.get("regeneration_count", 0) + 1 
-        state["refined_question"] = refined_question # store for transparency return state
-        
-        # ✅ Save to memory (state + class)
-        # self.rag_bot.save_to_memory(
-        #     state,
-        #     state["user_id"],
-        #     state["question"],
-        #     state["initial_answer"]
-        # )
+        # ------------------------------------
+        # Step 4: Update State (BaseModel)
+        # ------------------------------------
+
+        state.final_answer = final_answer
+        state.refined_question = refined_question
+        state.regeneration_count = (state.regeneration_count or 0) + 1
+
+        return state

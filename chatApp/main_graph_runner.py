@@ -54,7 +54,7 @@ if __name__ == "__main__":
             print(f"Assistant: {rag_answer}\n")
 
             if related_docs:
-                print(f"📚 Related documents: {[d.metadata.get('id', 'unknown') for d in related_docs]}\n")
+                print(f"📚 Related documents: {[d.metadata.get('doc_id', 'unknown') for d in related_docs]}\n")
     except KeyboardInterrupt:
         rag_instance.persist_user_history(user_id, state)
         print("\n💾 History saved and exiting.")

@@ -1,30 +1,51 @@
-from langgraph.graph import StateGraph, START, END
-from typing import TypedDict
 from nodes.chat_node import ThinkpalmRAG, RetrieverNode, GenerationNode, RerankNode, EvaluatorNode, RegenerateNode
-from nodes.embedding_node import FAISSEmbeddingNode
-from nodes.new_base_node import BaseNode
 # Define pipeline state
 from typing import TypedDict, List, Any, Dict
 import os
 
-class ChatState(TypedDict):
+from pydantic import BaseModel, Field
+from typing import List, Any, Dict, Optional
+from langgraph.graph import StateGraph, START, END
+from datetime import datetime
+
+
+# -----------------------
+#  ChatState (BaseModel)
+# -----------------------
+class ChatState(BaseModel):
+    # ---- Inputs ----
     question: str
     user_id: str
-    vector_store_path: str
-    retrieved_docs: List[Any]
-    initial_answer: str
+    vector_store_path: Optional[str] = None
+
+    # ---- Retrieval ----
+    retrieved_docs: List[Any] = Field(default_factory=list)
+    filtered_docs: List[Any] = Field(default_factory=list)
+    final_context: List[Any] = Field(default_factory=list)
+
+    # ---- Initial Answer ----
+    initial_answer: str = ""
+    # rag_response: str = ""
+    # answer: str = ""
+    final_answer: str = ""
+
+    # ---- Evaluation Fields ----
+    graded_scores: List[Any] = Field(default_factory=list)
+    # scores: List[float] = Field(default_factory=list)
+
+    threshold_passed: bool = False
     
-    graded_scores: List
-    filtered_docs: List
-    scores: List[float]
-    # reranked_docs: List[Any]
-    threshold_passed: bool
-    rag_response: str
+    eval_text: str = ""                          # <--- REQUIRED
+    eval_score_faithfulness: float = 0.0         # <--- REQUIRED
+    eval_score_relevance: float = 0.0            # <--- REQUIRED
+
+    # ---- Regeneration ----
+    regeneration_count: int = 0                  # <--- REQUIRED
+    refined_question: Optional[str] = None       # <--- REQUIRED
+
+    # ---- Memory ----
+    chat_memory: Dict[str, List[tuple]] = Field(default_factory=dict)
     
-    final_context: List
-    final_answer: str
-    answer: str
-    chat_memory: Dict[str, List[tuple]] 
     
 # ------------- Add RAG node -------------
 COSMOS_ENDPOINT = os.getenv("COSMOS_ENDPOINT")
@@ -44,7 +65,7 @@ def rag_node(state: ChatState):
     return state
 
 chat_graph = StateGraph(ChatState)
-'''
+# '''
 # --- Define nodes ---
 chat_graph.add_node("retrieve", RetrieverNode().execute)
 llm = RetrieverNode().rag_bot.llm
@@ -59,7 +80,7 @@ chat_graph.add_edge("retrieve", "evaluate")
 # --- Conditional routing ---
 def rerank_condition(state: dict):
     # If evaluation passes → skip rerank and regenerate → go to END
-    return "rerank" if not state.get("threshold_passed") else "end"
+    return "rerank" if not state.threshold_passed else "end"
 
 chat_graph.add_conditional_edges(
     "evaluate",
@@ -76,8 +97,8 @@ chat_graph.add_edge("regenerate", END)
 
 chat_graph = chat_graph.compile()
 
-"""
-# '''
+# """
+'''
 # Instantiate node
 chat_graph = StateGraph(ChatState)
 
@@ -105,6 +126,6 @@ except Exception:
     # This requires some extra dependencies and is optional
     pass
  
-# '''
+'''
 
 
