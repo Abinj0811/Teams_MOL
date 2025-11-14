@@ -70,27 +70,25 @@ class ThinkpalmRAG:
             """
 
         self.COST_RULES = """
-            If the question concerns cost, budget, or amount:
-            - Determine approval thresholds by total category amount.
-            - Do not merge unrelated categories.
-            - Include authorised approvers, reviews, CC, and reports exactly as stated.
-            
-            For multi-cost or multi-item questions, follow these rules:
+            9. If the question concerns cost, budget, or amount:
+                - Determine approval thresholds by total category amount.
+                - Do not merge unrelated categories.     
+                - Identify Categories : Eg:        
+                - For multi-cost or multi-item questions, follow these rules:
+                    a. **Identify Categories:** Determine the distinct approval categories and their specific thresholds based on the total category amount from the respective session.
+                        Eg: * Implementation / New System → "Acquisition, disposal of IT related fixed assets"
+                                policies under this session
+                            * Maintenance / Service Contract → "IT-related service agreements"
+                                policies under this session
 
-                a. **Treat each category separately:** For each transaction category (e.g., Implementation, Maintenance), sum all relevant amounts across sub-allocations (MCT, UNIX, subsidiaries, etc.) to determine the total cost for that category. Do NOT separate by internal allocations.
+                    c. **Extract All Details:** For each category, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, CC etc.) from the Document Context that matches the applicable threshold.
 
-                b. **Identify Categories:** Determine the distinct approval categories and their specific thresholds based on the total category amount.
-                    * Implementation / New System → "Acquisition, disposal of IT related fixed assets"
-                    * Maintenance / Service Contract → "IT-related service agreements"
+                    d. **Final Rule Application:** State the final business rule that governs the submission based on total category amounts.
 
-                c. **Extract All Details:** For each category, extract the entire line of approval details (Approvers, Reports, Reviews, Co-management, CC etc.) from the Document Context that matches the applicable threshold.
-
-                d. **Final Rule Application:** State the final business rule that governs the submission based on total category amounts.
-
-                e. **Output Format for Multiple Categories:**
-                    A) For [First Transaction Category] — [total amount + approval details].  
-                    B) For [Second Transaction Category] — [total amount + approval details].  
-                    Then add a short **“Conclusion”** explaining the overall rule.
+                    e. **Output Format for Multiple Categories:**
+                        A) For [First Transaction Category] — [total amount + approval details].  
+                        B) For [Second Transaction Category] — [total amount + approval details].  
+                        Then add a short **“Conclusion”** explaining the overall rule.
             """
         self.DISAMBIGUATION_RULE = """
         CATEGORY SELECTION & MERGE RULE:
@@ -833,14 +831,12 @@ class ThinkpalmRAG:
 
         # Apply generic rules only if not blocked by session
         if "COST_RULES" not in blocked and any(x in q_lower for x in ["cost", "fee", "amount", "budget", "it-related", "acquisition", "disposal"]):
-            extra_rules += self.COST_RULES
-            if re.search(r"less than|under", q_lower, flags=re.I):
-                extra_rules += self.HARD_EXCLUSION_RULE
-            extra_rules += self.FINAL_PRIORITIZATION_RULE
-            extra_rules += self.DISAMBIGUATION_RULE
+            print("Applying cost rules\n")
+            # extra_rules += self.COST_RULES
 
         # Duration-based logic
         if re.search(r"\b(year|years|month|months|period)\b", q_lower, flags=re.I):
+            print("Applying RANGE_SELECTION_RULE ,DURATION_RANGE_CONTAINMENT_RULE, NUMERIC_SPECIFICITY_TIEBREAK\n")
             extra_rules += self.RANGE_SELECTION_RULE
             extra_rules += self.DURATION_RANGE_CONTAINMENT_RULE
             extra_rules += self.NUMERIC_SPECIFICITY_TIEBREAK
@@ -857,7 +853,7 @@ class ThinkpalmRAG:
                 extra_rules += self.INSURANCE_DEPARTMENT_SUBTYPE_RULE
 
         # Always add final cleanup rule
-        extra_rules += self.RELEVANT_LINE_FILTER_RULE
+        # extra_rules += self.RELEVANT_LINE_FILTER_RULE
 
         # ==============================
         # FINAL PROMPT TEMPLATE
@@ -873,15 +869,54 @@ class ThinkpalmRAG:
         4. Answer **only** from the provided context.
             - If not enough info exists, reply exactly:  
             "I do not have sufficient information in the available policy context to answer that."
-        5. Do **not** summarize, rename, or interpret policies — **copy exact table lines that apply.**
-        6. Maintain the format strictly:
-            - **Opening Summary:** one line answering the question directly.
-            - **Details:** copy exact committee roles and approvers VERBATIM from the Document Context.
-            - **Conclusion:** short summary of the required approval or process.
-        7. When multiple departments or thresholds appear, clearly state which rule applies and under what condition.
-        8. Before finalizing, ensure the "Details" section does not contain unnecessary category headers.
+        5. **CRITICAL - Amount Threshold Selection and Range Interpretation**:
+            a) When a SPECIFIC amount is given (e.g., $8,300):
+                - Identify ALL thresholds that this amount qualifies for
+                - Select the MOST SPECIFIC threshold that applies
+                - Example: $8,300 qualifies for both "Less than US$50,000" and "Less than US$25,000"
+                - Use "Less than US$25,000" (more specific), NOT "Less than US$50,000"
+            
+            b) When a RANGE is given (e.g., "less than US$50,000"):
+                - **CRITICAL**: Show ONLY thresholds that fall WITHIN that range
+                - "Less than US$50,000" means amounts from $0 to $49,999
+                - DO NOT include "US$50,000 or more" threshold - that is OUTSIDE the range
+                - DO include: "US$25,000 or more", "US$10,000 or more", "Less than US$10,000" (all are within the range)
+                - For IT-related assets with "less than $50,000": show US$25,000 or more, US$10,000 or more, and Less than US$10,000
+                - For non-IT assets with "less than $50,000": show only "Less than US$50,000" (if $25,000+ show "Less than US$25,000")
+            
+            c) Boundary Rules:
+                - "Less than X" = amounts below X (does NOT include X)
+                - "X or more" = amounts at or above X (INCLUDES X)
+                - Never include a threshold that requires amounts AT or ABOVE the upper limit of a range
+        6. **CRITICAL - Term Mapping for Implementation and Maintenance**:
+            a) **"Implementation"** queries should be treated as **Acquisition of Fixed Assets**:
+                - If IT context (software/system): Map to "Acquisition of IT related fixed assets"
+                - If non-IT context or unclear: Present both IT and non-IT acquisition rules
+                - Example: "implementation cost" = acquisition cost
+            
+            b) **"Maintenance"** queries should be treated as **Service Agreements**:
+                - If IT context (software/system): Map to "IT-related service agreements"
+                - If non-IT context or unclear: Present both IT and non-IT service agreement rules
+                - Example: "maintenance cost" = service agreement/contract cost
+            
+            c) **Both Implementation AND Maintenance** in same query:
+                - Present BOTH sections: Acquisition rules AND Service agreement rules
+                - Clearly separate: "(A) Implementation (Acquisition): ..." and "(B) Maintenance (Service Agreement): ..."
+                - Example: "implementation $40K and maintenance $30K" → show acquisition rules for $40K AND service agreement rules for $30K
+        7. **CRITICAL - Asset Category Coverage**: When the question asks about generic "acquisition", "product", or "purchase" WITHOUT explicitly specifying IT or non-IT:
+            - You MUST check if BOTH "Acquisition of assets (Excluding IT related assets)" AND "Acquisition of IT related assets" are present in the Document Context
+            - If BOTH categories exist, you MUST present BOTH categories in your answer with clear labeling
+            - Format: Present as "(A) Fixed Assets (excluding IT-related assets): [approval details]" and "(B) IT-related Fixed Assets: [approval details]"
+            - Do NOT assume the question is only about one category unless explicitly stated
+            - Example for "less than US$50,000":
+                * (A) Fixed Assets (excluding IT-related assets): If exact threshold exists, show it → "Less than US$50,000: A4; Review: GPM; CC: GAF"
+                * (B) IT-related Fixed Assets: For amounts less than US$50,000, show applicable sub-thresholds within that range:
+                - US$25,000 or more (but < US$50,000): A3; Co-Management Dept.: ICS / DXS; Review: GPM; CC: GAF
+                - US$10,000 or more (but < US$25,000): A3; Co-Management Dept.: ICS / DXS; CC: GAF
+                - Less than US$10,000: A4; Co-Management Dept.: ICS / DXS; CC: GAF
+        
+        8. After all range interpretation and reasoning , show the most specific threshold and minimal explanation / summary at the end , making sure of non-repeated information.
         {extra_rules}
-        9. Always verify that the selected policy line matches the question's numeric or duration context.
 
         ==============================
         ### QUESTION
