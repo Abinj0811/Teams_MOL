@@ -13,7 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional, Dict, Any
-import os
+import os, csv
 import re
 from dotenv import load_dotenv
 load_dotenv()
@@ -41,11 +41,149 @@ load_dotenv()
 
 import spacy
 nlp = spacy.load("en_core_web_sm")
+# os.environ["TEST_MODE"] = "true"
 
 def extract_significant_words(sentence: str):
     doc = nlp(sentence)
     return [token.lemma_.lower() for token in doc if token.pos_ in {"NOUN", "PROPN", "NUM"} and not token.is_stop]
-         
+      
+import json, os
+
+import os
+import json
+
+class FakeCosmosContainer:
+    """
+    A simple in-memory CosmosDB emulator for testing.
+    Stores items exactly in the schema expected by ThinkpalmRAG:
+    
+    {
+        "id": "...",
+        "user_id": "...",
+        "user": "Q1",
+        "assistant": "A1",
+        "timestamp": "2025-11-20T06:10:03Z"
+    }
+    """
+
+    def __init__(self, file="fake_cosmos.json"):
+        self.file = file
+
+        if os.path.exists(file):
+            with open(file, "r") as f:
+                try:
+                    self.items = json.load(f)
+                except:
+                    self.items = {}
+        else:
+            self.items = {}
+
+    # ----------------------------------------------------------------------
+    def flush(self):
+        """Write DB to disk."""
+        with open(self.file, "w") as f:
+            json.dump(self.items, f, indent=2)
+
+    # ----------------------------------------------------------------------
+    def upsert_item(self, item):
+        # If item has user/assistant => convert to role-based messages.
+        if "user" in item and "assistant" in item:
+            ts = item["timestamp"]
+            uid = item["user_id"]
+            
+            user_msg = {
+                "id": item["id"] + "-u",
+                "user_id": uid,
+                "role": "user",
+                "content": item["user"],
+                "timestamp": ts
+            }
+            assistant_msg = {
+                "id": item["id"] + "-a",
+                "user_id": uid,
+                "role": "assistant",
+                "content": item["assistant"],
+                "timestamp": ts
+            }
+
+            self.items[user_msg["id"]] = user_msg
+            self.items[assistant_msg["id"]] = assistant_msg
+            self.flush()
+            return
+
+        # Already correct format
+        self.items[item["id"]] = item
+        self.flush()
+
+
+    # ----------------------------------------------------------------------
+    def delete_item(self, item_id, partition_key=None):
+        """Delete by ID (ignore partition key for fake)."""
+        if item_id in self.items:
+            del self.items[item_id]
+            self.flush()
+
+    # ----------------------------------------------------------------------
+    def query_items(self, query, enable_cross_partition_query=False):
+        """
+        Reliable Cosmos query emulator.
+        Supports:
+            - WHERE c.user_id = 'x'
+            - ORDER BY c.timestamp ASC/DESC
+            - SELECT TOP N
+        Ignores column projections.
+        """
+
+        # Normalize whitespace and lowercase everything for matching
+        q = " ".join(query.lower().split())
+
+        # Start with all items
+        results = list(self.items.values())
+
+        # -------------------------
+        # WHERE c.user_id = 'u1'
+        # -------------------------
+        if "where" in q.lower() and "c.user_id" in q.lower():
+            try:
+                import re
+                
+                # Extract WHERE part from original (case-preserved, safe)
+                where_part = q.split("WHERE", 1)[1] if "WHERE" in q else q.split("where", 1)[1]
+
+                # Extract exact-case user id using regex on ORIGINAL query
+                m = re.search(r"c\.user_id\s*=\s*(['\"])(.*?)\1", where_part, flags=re.I)
+
+                if not m:
+                    return []
+
+                user_id = m.group(2)   # <-- EXACT 'u1', NEVER 'U1'
+
+                # Exact match filter
+                results = [it for it in results if it.get("user_id") == user_id]
+
+            except Exception as e:
+                print("WHERE parse error:", e)
+                results = []
+        # -------------------------
+        # ORDER BY c.timestamp ASC/DESC
+        # -------------------------
+        if "order by" in q:
+            ascending = "asc" in q  # if ASC exists, sort ascending
+            results.sort(key=lambda x: x.get("timestamp", ""), reverse=not ascending)
+
+        # -------------------------
+        # SELECT TOP N
+        # -------------------------
+        if "top" in q:
+            try:
+                n = int(q.split("top")[1].strip().split()[0])
+                results = results[:n]
+            except Exception:
+                pass
+
+        return results
+
+        
 class ThinkpalmRAG:
     def __init__(self):
         # ========== CONFIG ==========
@@ -61,7 +199,7 @@ class ThinkpalmRAG:
         self.chat_memory = {}  # { user_id: deque([(user_msg, assistant_msg), ...]) }
         self.last_sync_counter = {}   # track per-user unsynced turns
         self.history_limit = 5
-        self.autosave_interval = 10
+        self.autosave_interval = 3
         
         self.COMMITTEE_RULES = """
             If the question involves a committee:
@@ -131,11 +269,17 @@ class ThinkpalmRAG:
             
 
         # ========== CLIENTS ==========
-        self.client = CosmosClient(url=self.cosmos_endpoint, credential=self.cosmos_key)
-        self.db = self._ensure_database(self.db_name)
-        self.container = self._ensure_container(self.container_name)
-        self.history_container = self._ensure_container(self.history_container_name, partition_key="user_id")
-
+        
+        if os.getenv("TEST_MODE") == "true":
+            print("⚠ Using Fake Cosmos DB (In-Memory)")
+            self.history_container = FakeCosmosContainer()
+            self.container = FakeCosmosContainer()
+        else:
+            self.client = CosmosClient(url=self.cosmos_endpoint, credential=self.cosmos_key)
+            self.db = self._ensure_database(self.db_name)
+            self.container = self._ensure_container(self.container_name)
+            self.history_container = self._ensure_container(self.history_container_name, partition_key="user_id")
+    
         # ========== EMBEDDINGS + LLM ==========
         self.embeddings = OpenAIEmbeddings(model=self.model_name)
         self.llm = ChatOpenAI(
@@ -148,6 +292,30 @@ class ThinkpalmRAG:
 
         # ========== RETRIEVER & RAG CHAIN ==========
         
+
+    def _append_history_to_csv(self, user_id: str, memory_pairs: list):
+
+        csv_file = "chat_history_log.csv"
+        file_exists = os.path.exists(csv_file)
+
+        # Build rows to append
+        now = datetime.utcnow
+        rows = [
+            [now().isoformat(), user_id, u, a]
+            for u, a in memory_pairs
+        ]
+
+        # Open in append mode (creates file if not exists)
+        with open(csv_file, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+
+            # Write header only the first time
+            if not file_exists:
+                writer.writerow(["timestamp", "user_id", "user_msg", "assistant_msg"])
+
+            # Write all new rows
+            writer.writerows(rows)
+
 
     # ------------------------------------------------------------
     # COSMOS HELPERS
@@ -169,42 +337,49 @@ class ThinkpalmRAG:
             raise
 
     def load_user_history(self, user_id: str):
-        """Load last 5 chat turns for a user from Cosmos DB into memory."""
+        """Load last 5 chat turns from Cosmos DB (role-based) into paired memory."""
         try:
-            # load_user_history()
             query = f"""
-            SELECT TOP {self.history_limit * 2} c.user, c.assistant, c.timestamp
-            FROM c
+            SELECT TOP {self.history_limit * 2} * FROM c
             WHERE c.user_id = '{user_id}'
             ORDER BY c.timestamp ASC
             """
-            items = list(self.history_container.query_items(query=query, enable_cross_partition_query=True))
+
+            items = list(self.history_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+
+            paired = []
+            pending_user = None
+
+            for it in items:
+                role = it.get("role")
+                content = it.get("content")
+
+                if role == "user":
+                    pending_user = content
+                elif role == "assistant" and pending_user:
+                    paired.append((pending_user, content))
+                    pending_user = None
 
             self.chat_memory[user_id] = deque(
-                [(it["user"], it["assistant"]) for it in items[-self.history_limit:]],
+                paired[-self.history_limit:],
                 maxlen=self.history_limit
             )
 
-            items = list(self.history_container.query_items(query=query, enable_cross_partition_query=True))
+            print(f"✅ Loaded {len(self.chat_memory[user_id])} past turns for {user_id}")
 
-            self.chat_memory[user_id] = deque(
-                [(it["user"], it["assistant"]) for it in items[-self.history_limit:]],
-                maxlen=self.history_limit
-            )
-            print(f"✅ Loaded {len(self.chat_memory[user_id])} past turns from Cosmos for {user_id}")
-        except exceptions.CosmosResourceNotFoundError:
-            print(f"⚠️ No existing history for {user_id}.")
-            self.chat_memory[user_id] = deque(maxlen=self.history_limit)
         except Exception as e:
             print(f"Error loading history for {user_id}: {e}")
             self.chat_memory[user_id] = deque(maxlen=self.history_limit)
 
-    def save_to_memory(self, state, user_id: str, user_msg: str, assistant_msg: str):
+
+    def save_to_memory(self, chat_state_memory, user_id: str, user_msg: str, assistant_msg: str):
         """Save chat turn in both session state and rolling memory; autosync every few turns."""
         
         # Initialize chat memory in both state and instance, if missing
-        if "chat_memory" not in state:
-            state["chat_memory"] = {}
+        # Ensure memory exists
 
         if user_id not in self.chat_memory:
             self.chat_memory[user_id] = deque(maxlen=self.history_limit)
@@ -212,9 +387,6 @@ class ThinkpalmRAG:
 
         # Add message to deque (auto-trims old entries)
         self.chat_memory[user_id].append((user_msg, assistant_msg))
-
-        # Reflect it back to state (optional, for graph continuity)
-        state["chat_memory"][user_id] = list(self.chat_memory[user_id])
 
         # Increment turn counter
         self.last_sync_counter[user_id] = self.last_sync_counter.get(user_id, 0) + 1
@@ -224,7 +396,11 @@ class ThinkpalmRAG:
             print(f"💾 Auto-syncing {user_id}'s chat history to Cosmos...")
             self.persist_user_history(user_id)
             self.last_sync_counter[user_id] = 0
-
+        # Build updated memory dict for returning
+        updated_memory = {**chat_state_memory}
+        updated_memory[user_id] = list(self.chat_memory[user_id])
+        return updated_memory
+    
 
     def persist_user_history(self, user_id: str, state=None):
         """
@@ -239,16 +415,23 @@ class ThinkpalmRAG:
             if hasattr(self, "chat_memory") and self.chat_memory.get(user_id):
                 memory = list(self.chat_memory[user_id])
                 print(f"💾 Using in-memory chat cache for {user_id} ({len(memory)} turns).")
-
+                print('IF LOOP')
             # 2️⃣ Otherwise fallback to state object
             elif state and hasattr(state, "state") and "chat_memory" in state.state:
                 memory = state.state["chat_memory"].get(user_id, [])
                 print(f"💾 Using state-based chat memory for {user_id} ({len(memory)} turns).")
-
+                print('el LOOP')
             if not memory:
                 print(f"⚠️ No chat history found to persist for {user_id}.")
+                print('IF not memory LOOP')
                 return
 
+            # -------------------------
+            # Append to local CSV debug log
+            # -------------------------
+            self._append_history_to_csv(user_id, list(memory)[-self.history_limit:])
+            # -------------------------
+            
             # ✅ Delete older records (keeping only last N turns)
             query = f"""
             SELECT c.id, c.timestamp FROM c 
@@ -389,54 +572,85 @@ class ThinkpalmRAG:
             "history": history,
             "user_id": uid
         }
+
+
     def get_chat_history_text(self, user_id: str) -> str:
         """
-        Retrieve chat history for the given user.
+        Retrieve and format chat history for the given user, ensuring chronological order.
         Prefer in-memory (session) chat_memory; fallback to Cosmos DB.
-        Returns formatted conversation string.
+        Returns formatted conversation string (e.g., 'Human: msg\nAI: msg').
         """
-        try:
-            # ✅ Prefer in-memory cache
-            memory = self.chat_memory.get(user_id, [])
-            
-            # 🧩 Defensive fix: ensure it's a list
-            if isinstance(memory, dict):
-                # Convert dict to list of (user, assistant) pairs if needed
-                memory = [(k, v) for k, v in memory.items()]
-            elif not isinstance(memory, list):
-                memory = []
+        
+        # 1. 💾 Try In-Memory Cache (Should already be correctly structured)
+        memory_pairs = self.chat_memory.get(user_id, [])
+        
+        # Ensure memory_pairs is a list of (user_msg, assistant_msg) tuples/lists
+        if not isinstance(memory_pairs, list):
+            memory_pairs = []
 
-            # ⚙️ If empty → fallback to Cosmos DB
-            if not memory:
+        # 2. 🧩 Fallback to Cosmos DB if cache is empty
+        if not memory_pairs:
+            try:
+                # Query the *latest* items first (DESC) for best performance, then reverse later
+                # We fetch up to history_limit * 2 to ensure we have full pairs, just in case.
                 query = f"""
                 SELECT TOP {self.history_limit * 2} * FROM c 
                 WHERE c.user_id = '{user_id}'
-                ORDER BY c.timestamp ASC
+                ORDER BY c.timestamp DESC
                 """
+                
+                # Note: Assuming self.history_container handles the query correctly (FakeCosmos or real)
                 items = list(self.history_container.query_items(
                     query=query,
                     enable_cross_partition_query=True
                 ))
-                items = sorted(items, key=lambda x: x.get("timestamp", ""), reverse=False)
-                print(f"✅ Loaded {len(items)} past turns from Cosmos for {user_id}")
+
+                # 🚨 FIX: Sort/Reverse to ensure chronological order (Oldest -> Newest)
+                # Since we queried DESC, the newest is first. We need to reverse this.
+                # Using timestamp as the primary sort key is crucial for the FakeCosmos tests.
+                items.sort(key=lambda x: x.get("timestamp", ""), reverse=False)
                 
-                # ✅ Store into in-memory cache
-                memory = [(i.get("user", ""), i.get("assistant", "")) for i in items]
-                self.chat_memory[user_id] = memory
-            else:
-                print(f"💾 Loaded {len(memory)} turns from in-memory cache for {user_id}")
+                # Assuming Cosmos items are individual messages (role, content, timestamp)
+                # We need to re-pair them into turns.
+                temp_memory = []
+                user_msg = None
+                
+                for item in items:
+                    content = item.get("content", "")
+                    role = item.get("role", "")
+                    
+                    if role == "user":
+                        user_msg = content
+                    elif role == "assistant" and user_msg is not None:
+                        # Found a complete (user, assistant) pair
+                        temp_memory.append((user_msg, content))
+                        user_msg = None # Reset for the next turn
 
-            # ✅ Safely slice only lists
-            limited_pairs = memory[-self.history_limit:] if isinstance(memory, list) else []
-            
-            history_text = "\n".join([
-                f"User: {u}\nAssistant: {a}" for u, a in limited_pairs
-            ])
-            return history_text.strip()
+                memory_pairs = temp_memory
+                
+                # Store the chronologically ordered pairs back into the in-memory cache
+                self.chat_memory[user_id] = memory_pairs
+                print(f"✅ Loaded {len(memory_pairs)} past turns from Cosmos for {user_id}")
+                
+            except Exception as e:
+                # Important to catch exceptions in the DB layer
+                print(f"⚠️ Cosmos Error retrieving history for {user_id}: {e}")
+                return ""
 
-        except Exception as e:
-            print(f"⚠️ Error retrieving chat history for {user_id}: {e}")
-            return ""
+        else:
+            print(f"💾 Loaded {len(memory_pairs)} turns from in-memory cache for {user_id}")
+
+        # 3. ✂️ Limit and Format the History
+        
+        # We now have chronologically ordered pairs. Limit to the latest N pairs.
+        limited_pairs = memory_pairs[-self.history_limit:] 
+        
+        # 🚨 FIX: Standardize the output format for the LLM prompt.
+        history_text = "\n".join([
+            f"Human: {u}\nAI: {a}" for u, a in limited_pairs
+        ])
+        
+        return history_text.strip()
 
     def _add_retrieval_hints(self, text: str) -> str:
         """
@@ -537,7 +751,58 @@ class ThinkpalmRAG:
             text += "\n\nHINTS: " + "; ".join(hints)
 
         return text
+    def rewrite_question(self, inputs):
+        # ⚡️ Pronoun / vague reference detector
+        PRONOUN_PATTERN = re.compile(
+            r"\b(it|this|that|they|them|those|there|these|he|she|his|her|their|mentioned|above|same)\b",
+            re.IGNORECASE
+        )
+        user_id = inputs["user_id"]
+        question = inputs["question"].strip()
+        history_text = self.get_chat_history_text(user_id)
 
+        # 🧩 If no prior history, skip rewriting
+        if not history_text:
+            return {"user_id": user_id, "question": question}
+
+        # 🧠 If pronoun detected → use LLM to clarify
+        if PRONOUN_PATTERN.search(question):
+            reformulation_prompt = f"""
+You are a helpful assistant. Rewrite the latest user question so it becomes 
+self-contained and unambiguous, based on the conversation history.
+
+REWRITE RULES:
+- Remove ALL pronouns (it, this, that, they, them, etc.).
+- EXCEPTION: The acronym “IT” referring to Information Technology **must be uppercase**.
+- Never output “it” in lowercase unless it is part of another word 
+  (e.g., "acquisition", "notification").
+- If the context refers to “IT assets”, rewrite it EXACTLY as “IT assets”.
+- NEVER output the phrase “it asset acquisition” — convert it to “IT asset acquisition”.
+
+Conversation History:
+{history_text}
+
+Latest User Question: {question}
+
+Rewritten question:
+"""
+            rewritten = self.llm.invoke(reformulation_prompt).content.strip()
+            print(f"🔁 Rewritten question: {rewritten}")
+            self._last_rewritten = {
+            "question": rewritten,
+            "original": question,
+            "history_used": history_text
+        }
+            
+            return {"user_id": user_id, "question": rewritten}
+
+        # 🚀 No pronouns → no rewrite
+        self._last_rewritten = {
+        "question": question,
+        "original": question,
+        "history_used": history_text
+    }
+        return {"user_id": user_id, "question": question}
     # ------------------------------------------------------------
     # VECTOR SEARCH ON COSMOS
     # ------------------------------------------------------------
@@ -605,7 +870,7 @@ class ThinkpalmRAG:
 
         return items[0] if items else None
 
-
+    
 
     def search_cosmos_documents(self, query: str):
         """Perform vector search using Cosmos SQL API's VectorDistance function."""
@@ -981,16 +1246,26 @@ class ThinkpalmRAG:
                 """
                 rewritten = self.llm.invoke(reformulation_prompt).content.strip()
                 print(f"🔁 Rewritten question: {rewritten}")
+                self._last_rewritten = {
+        "question": question,
+        "original": question,
+        "history_used": history_text
+    }
                 return {"user_id": user_id, "question": rewritten}
 
             # 🚀 No pronouns → no rewrite
+            self._last_rewritten = {
+        "question": question,
+        "original": question,
+        "history_used": history_text
+    }
             return {"user_id": user_id, "question": question}
 
 
         # Step 2️⃣ — Retrieval runnable (uses rewritten question)
         def retrieve_with_rewrite(inputs):
             """Rewrite the question, then search Cosmos with rewritten text."""
-            rewritten = rewrite_question(inputs)
+            rewritten = self.rewrite_question(inputs)
             
             # 🧠 Enrich the question with retrieval hints
             hinted_query = self._add_retrieval_hints(rewritten["question"])
@@ -1060,7 +1335,7 @@ class ThinkpalmRAG:
             f.write(f"\n\n==============================\n")
 
         
-        # self.update_chat_memory(user_id, question, response)
+        self.update_chat_memory(user_id, question, response)
         
         return response, docs
     
@@ -1079,8 +1354,8 @@ class RetrieverNode(BaseNode):
         )
 
         # --- Save memory (uses dict-like input, so convert state to dict) ---
-        self.rag_bot.save_to_memory(
-            state.model_dump(),     # Convert BaseModel → dict
+        updated_memory = self.rag_bot.save_to_memory(
+            state.chat_memory,
             state.user_id,
             state.question,
             initial_answer
@@ -1089,7 +1364,8 @@ class RetrieverNode(BaseNode):
         # --- Return updated state (immutably) ---
         return state.model_copy(update={
             "initial_answer": initial_answer,
-            "retrieved_docs": retrieved_docs
+            "retrieved_docs": retrieved_docs,
+            "chat_memory": updated_memory                     # ⭐ MUST ADD THIS
         })
 
     
@@ -1436,7 +1712,7 @@ to correct the answer.
 1. Fix all issues highlighted by the evaluation critique.
 2. Remove any unsupported or hallucinated details.
 3. Base the answer **only** on provided context.
-4. If answer is not found, say: "I’m sorry, I don’t have that information."
+4. If answer is not found, say: "I’m sorry, I don’t have that information in the policy context."
 5. Be clear, concise, and professional.
 
 **NEW, CORRECTED ANSWER:**

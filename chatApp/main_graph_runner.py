@@ -32,32 +32,36 @@ if __name__ == "__main__":
     state.set_state("chat_memory", {})  # 🧠 initialize empty memory
 
     try:
-        # Start chat loop
+    # Start chat loop
         while True:
-            user_msg = input("You: ")
+            user_msg = input("\nYou: ")
             if user_msg.lower() in ["exit", "quit"]:
-                print("\n💾 History saved and exiting.")
+                print("\n💾 sample History saved and exiting.")
                 rag_instance.persist_user_history(user_id, state)
                 break
+            
+            
 
             # Update state for this turn
             state.set_state("question", user_msg)
 
             # Invoke your RAG graph
             final_state = chat_graph.invoke(state.to_dict())
-
+            state.set_state("chat_memory", final_state["chat_memory"])
             # Extract the RAG answer
             rag_answer = final_state.get("rag_response", "⚠️ No response generated.")
             
             related_docs = final_state.get("retrieved_docs", [])
 
-            print(f"Assistant: {rag_answer}\n")
+            # print(f"Assistant: {rag_answer}\n")
 
             if related_docs:
+                # print(related_docs)
                 print(f"📚 Related documents: {[d.metadata.get('doc_id', 'unknown') for d in related_docs]}\n")
-    except KeyboardInterrupt:
+    except Exception  as e:
+        print('Error: ', e)
         rag_instance.persist_user_history(user_id, state)
-        print("\n💾 History saved and exiting.")
+        print("\n💾 Sample History saved and exiting.")
 """  
         
 from nodes.chat_node import ThinkpalmRAG
@@ -76,4 +80,4 @@ if __name__ == "__main__":
     if choice.lower().startswith("y"):
         rag.clear_user_history(user_id)
         exit()
-"""
+# """
