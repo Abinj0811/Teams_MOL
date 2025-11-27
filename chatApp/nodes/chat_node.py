@@ -13,6 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 from typing import List, Literal, Optional, Dict, Any
+from collections import defaultdict
 import os, csv
 import re
 from dotenv import load_dotenv
@@ -199,7 +200,8 @@ class ThinkpalmRAG:
         self.chat_memory = {}  # { user_id: deque([(user_msg, assistant_msg), ...]) }
         self.last_sync_counter = {}   # track per-user unsynced turns
         self.history_limit = 5
-        self.autosave_interval = 3
+        self.autosave_interval = 2
+        self.last_persist_index = defaultdict(int)
         
         self.COMMITTEE_RULES = """
             If the question involves a committee:
@@ -397,19 +399,26 @@ class ThinkpalmRAG:
         """Save chat turn in both session state and rolling memory; autosync every few turns."""
         
         
-        # If a rewrite happened, replace user_msg with rewritten version
+        # Build question record
         if hasattr(self, "_last_rewritten"):
-            rewritten_q = self._last_rewritten.get("rewritten")
-            if rewritten_q:
-                user_msg = rewritten_q
+            original_q = self._last_rewritten.get("original", user_msg)
+            rewritten_q = self._last_rewritten.get("rewritten", None)
+        else:
+            original_q = user_msg
+            rewritten_q = None
+
+        # Store BOTH in a dict
+        question_record = {
+            "original": original_q,
+            "rewritten": rewritten_q
+        }
         # Initialize chat memory in both state and instance, if missing
         # Ensure memory exists
-
         if user_id not in self.chat_memory:
             self.chat_memory[user_id] = deque(maxlen=self.history_limit)
             self.last_sync_counter[user_id] = 0
 
-        self.chat_memory[user_id][-1] = (user_msg, assistant_msg)
+        self.chat_memory[user_id][-1] = (question_record, assistant_msg)
         # Increment turn counter
         self.last_sync_counter[user_id] = self.last_sync_counter.get(user_id, 0) + 1
 
@@ -448,10 +457,20 @@ class ThinkpalmRAG:
                 print('IF not memory LOOP')
                 return
 
+            total_turns = len(memory)
+            last_saved = self.last_persist_index.get(user_id, 0)
+
+            # -------- Determine new turns --------
+            new_turns = memory[last_saved:]  # only unsaved items
+            if not new_turns:
+                print(f"ℹ️ No new turns to persist for {user_id}.")
+                return
+
+            print(f"💾 Persisting {len(new_turns)} NEW turns for {user_id}")
             # -------------------------
             # Append to local CSV debug log
             # -------------------------
-            self._append_history_to_csv(user_id, list(memory)[-self.history_limit:])
+            self._append_history_to_csv(user_id, new_turns)
             # -------------------------
             
             # ✅ Delete older records (keeping only last N turns)
@@ -474,7 +493,7 @@ class ThinkpalmRAG:
             # ✅ Save most recent N turns
             # Determine which question to save to DB
             
-            for user_msg, assistant_msg in list(memory)[-self.history_limit:]:
+            for user_msg, assistant_msg in new_turns:
                 if isinstance(user_msg, dict):
                     to_save = user_msg.get("rewritten") or user_msg.get("original")
                 else:
@@ -488,7 +507,8 @@ class ThinkpalmRAG:
                 }
                 self.history_container.upsert_item(item)
 
-            print(f"✅ Persisted {len(memory)} messages for {user_id} to Cosmos.")
+            self.last_persist_index[user_id] = total_turns
+            print(f"✅ Persisted {len(new_turns)} messages for {user_id} to Cosmos.")
         
         except Exception as e:
             print(f"❌ Failed to persist history for {user_id}: {e}")
@@ -1386,9 +1406,9 @@ class ThinkpalmRAG:
 
 
 class RetrieverNode(BaseNode):
-    def __init__(self):
+    def __init__(self, rag_bot):
         super().__init__("RetrieverNode")
-        self.rag_bot = ThinkpalmRAG()
+        self.rag_bot = rag_bot
         
     def execute(self, state: "ChatState") -> "ChatState":
         user_id = state.user_id

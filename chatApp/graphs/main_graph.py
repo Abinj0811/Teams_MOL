@@ -54,7 +54,7 @@ COSMOS_DATABASE = os.getenv("COSMOS_DATABASE")
 COSMOS_CONTAINER = os.getenv("COSMOS_CONTAINER")
 CHAT_CONTAINER = os.getenv("CHAT_CONTAINER")
 
-rag_instance = ThinkpalmRAG()
+
 
 def rag_node(state: ChatState):
     """Single-node RAG pipeline"""
@@ -64,8 +64,10 @@ def rag_node(state: ChatState):
     state["rag_response"] = answer
     return state
 
+rag_instance = ThinkpalmRAG()
 chat_graph = StateGraph(ChatState)
-# '''
+'''
+
 # --- Define nodes ---
 chat_graph.add_node("retrieve", RetrieverNode().execute)
 llm = RetrieverNode().rag_bot.llm
@@ -98,13 +100,16 @@ chat_graph.add_edge("regenerate", END)
 chat_graph = chat_graph.compile()
 
 # """
-'''
+# '''
 # Instantiate node
-chat_graph = StateGraph(ChatState)
 
 # --- Define nodes ---
-chat_graph.add_node("retrieve", RetrieverNode().execute)
-llm = RetrieverNode().rag_bot.llm
+shared_rag = rag_instance
+
+retriever_node = RetrieverNode(shared_rag)
+chat_graph.add_node("retrieve", retriever_node.execute)
+
+llm = shared_rag.llm
 # chat_graph.add_node("evaluate", EvaluatorNode().execute)
 # chat_graph.add_node("rerank", RerankNode().execute)
 # chat_graph.add_node("regenerate", RegenerateNode(llm).execute)
@@ -126,6 +131,6 @@ except Exception:
     # This requires some extra dependencies and is optional
     pass
  
-'''
+# '''
 
 
