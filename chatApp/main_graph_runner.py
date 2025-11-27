@@ -31,37 +31,68 @@ if __name__ == "__main__":
     state.set_state("chat_container", CHAT_CONTAINER)
     state.set_state("chat_memory", {})  # 🧠 initialize empty memory
 
-    try:
+    # try:
     # Start chat loop
-        while True:
-            user_msg = input("\nYou: ")
-            if user_msg.lower() in ["exit", "quit"]:
-                print("\n💾 sample History saved and exiting.")
-                rag_instance.persist_user_history(user_id, state)
-                break
-            
-            
+    # while True:
+    # '''
+    msg_list = ["Who are the people involved in the Ship Management Committee?"]
+    msg_list=[ 
+            "who can approve new product acquisition of less than US$50,000 ",
+            "Do we need to apply application of approval to write off the golf membership cost that was migrated from FCCSP (about $25,000)?",
+                "I want to submit an approval application for the service agreement with external party to implement a new expense claim system that cost US$50,000 and 1 year maintenance service contract that costs USD85,000. What approval criteria should I use?",
+                "I want to submit an approval to implement a new software system where 40% of the cost to implement and maintain will be charged to UNIX. Amount for implementation is $40,000 ($24,000 - MCT, $16,000 - UNIX) and maintenance is $30,000 ($18,000 - MCT, $12,000 - UNIX). What approval criteria should I use, and is it required to obtain separate subsidiary approval?"
+                ]
+    
+    msg_list= ["Novation of the Time Charter contract with XXX Company."]
+    msg_list= [
+        "Approval criteria and type for P&I Insurance (CLI/FDD) for Policy Year 2025",
+                "Which dept is responsible for vessels-related insurances (TCL, DTH, FDD)?"
+                ]
+    msg_list= ["What approval and departments are involved for the conclusion of service agreement with MCTWTN for admin cost sharing of USD800,000?"]
 
-            # Update state for this turn
-            state.set_state("question", user_msg)
+    msg_list= [
+        # "Does A4 approval requires submission of approval application?",
+        #         "What approval criteria should be applied for JOL contract time charter for 5 years period?",
+    #         # "What approval and departments are involved for the revision of service agreement with Unix for office cost sharing of USD200,000?",
+    # "Who are the people involved in the Ship Management Committee?",
+    # "what is its responsibilities",
+    "what is official authority regulations",
+    "what is its objective"
+    ]
+    
+    # msg_list = []
+    
+    for user_msg in msg_list:
+        # '''
+        # user_msg = input("\nYou: ")
+        if user_msg.lower() in ["exit", "quit"]:
+            print("\n💾 sample History saved and exiting.")
+            rag_instance.persist_user_history(user_id, state)
+            break
+        
+        
 
-            # Invoke your RAG graph
-            final_state = chat_graph.invoke(state.to_dict())
-            state.set_state("chat_memory", final_state["chat_memory"])
-            # Extract the RAG answer
-            rag_answer = final_state.get("rag_response", "⚠️ No response generated.")
-            
-            related_docs = final_state.get("retrieved_docs", [])
+        # Update state for this turn
+        state.set_state("question", user_msg)
 
-            # print(f"Assistant: {rag_answer}\n")
+        # Invoke your RAG graph
+        final_state = chat_graph.invoke(state.to_dict())
+        state.set_state("chat_memory", final_state["chat_memory"])
+        # Extract the RAG answer
+        rag_answer = final_state.get("rag_response", "⚠️ No response generated.")
+        
+        related_docs = final_state.get("retrieved_docs", [])
 
-            if related_docs:
-                # print(related_docs)
-                print(f"📚 Related documents: {[d.metadata.get('doc_id', 'unknown') for d in related_docs]}\n")
-    except Exception  as e:
-        print('Error: ', e)
-        rag_instance.persist_user_history(user_id, state)
-        print("\n💾 Sample History saved and exiting.")
+        # print(f"Assistant: {rag_answer}\n")
+
+        if related_docs:
+            # print(related_docs)
+            print(f"📚 Related documents: {[d.metadata.get('doc_id', 'unknown') for d in related_docs]}\n")
+    rag_instance.persist_user_history(user_id, state)
+    # except Exception  as e:
+    #     print('Error: ', e)
+        # rag_instance.persist_user_history(user_id, state)
+    #     print("\n💾 Sample History saved and exiting.")
 """  
         
 from nodes.chat_node import ThinkpalmRAG

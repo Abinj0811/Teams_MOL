@@ -297,23 +297,41 @@ class ThinkpalmRAG:
 
         csv_file = "chat_history_log.csv"
         file_exists = os.path.exists(csv_file)
+        now_ts = datetime.utcnow().isoformat()
 
-        # Build rows to append
-        now = datetime.utcnow
-        rows = [
-            [now().isoformat(), user_id, u, a]
-            for u, a in memory_pairs
-        ]
+        rows = []
 
-        # Open in append mode (creates file if not exists)
+        for qdata, assistant_answer in memory_pairs:
+
+            # --- New dict format ---
+            if isinstance(qdata, dict):
+                original_q = qdata.get("original", "")
+                rewritten_q = qdata.get("rewritten", "")   # <-- FIX: "question" holds rewritten
+            else:
+                # --- Old fallback format ---
+                original_q = qdata
+                rewritten_q = ""
+
+            rows.append([
+                now_ts,
+                user_id,
+                original_q,
+                rewritten_q,
+                assistant_answer
+            ])
+
         with open(csv_file, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
 
-            # Write header only the first time
             if not file_exists:
-                writer.writerow(["timestamp", "user_id", "user_msg", "assistant_msg"])
+                writer.writerow([
+                    "timestamp",
+                    "user_id",
+                    "original_question",
+                    "rewritten_question",
+                    "assistant_answer"
+                ])
 
-            # Write all new rows
             writer.writerows(rows)
 
 
@@ -378,6 +396,12 @@ class ThinkpalmRAG:
     def save_to_memory(self, chat_state_memory, user_id: str, user_msg: str, assistant_msg: str):
         """Save chat turn in both session state and rolling memory; autosync every few turns."""
         
+        
+        # If a rewrite happened, replace user_msg with rewritten version
+        if hasattr(self, "_last_rewritten"):
+            rewritten_q = self._last_rewritten.get("rewritten")
+            if rewritten_q:
+                user_msg = rewritten_q
         # Initialize chat memory in both state and instance, if missing
         # Ensure memory exists
 
@@ -385,9 +409,7 @@ class ThinkpalmRAG:
             self.chat_memory[user_id] = deque(maxlen=self.history_limit)
             self.last_sync_counter[user_id] = 0
 
-        # Add message to deque (auto-trims old entries)
-        self.chat_memory[user_id].append((user_msg, assistant_msg))
-
+        self.chat_memory[user_id][-1] = (user_msg, assistant_msg)
         # Increment turn counter
         self.last_sync_counter[user_id] = self.last_sync_counter.get(user_id, 0) + 1
 
@@ -450,11 +472,17 @@ class ThinkpalmRAG:
                 print(f"🧹 Pruned {len(old_items)} old messages for {user_id}.")
 
             # ✅ Save most recent N turns
+            # Determine which question to save to DB
+            
             for user_msg, assistant_msg in list(memory)[-self.history_limit:]:
+                if isinstance(user_msg, dict):
+                    to_save = user_msg.get("rewritten") or user_msg.get("original")
+                else:
+                    to_save = user_msg
                 item = {
                     "id": f"{user_id}-{datetime.utcnow().isoformat()}",
                     "user_id": user_id,
-                    "user": user_msg,
+                    "user": to_save,
                     "assistant": assistant_msg,
                     "timestamp": datetime.utcnow().isoformat()
                 }
@@ -530,6 +558,80 @@ class ThinkpalmRAG:
             
             return text
 
+    def get_memory_pairs(self, user_id: str):
+        """
+        Load ALL memory pairs (ordered oldest → newest).
+        Shared by rewriting + injection.
+        Never formatted here.
+        """
+        memory_pairs = self.chat_memory.get(user_id, [])
+
+        # If memory empty → fallback to Cosmos
+        if not memory_pairs:
+            items = list(self.history_container.query_items(
+                query=f"SELECT * FROM c WHERE c.user_id='{user_id}' ORDER BY c.timestamp ASC",
+                enable_cross_partition_query=True
+            ))
+            memory_pairs = [
+                (item.get("user", ""), item.get("assistant", ""))
+                for item in items if item.get("user") or item.get("assistant")
+            ]
+            self.chat_memory[user_id] = memory_pairs
+
+        return memory_pairs
+
+    def get_history_for_rewrite(self, user_id: str, turns: int = 1) -> str:
+        """
+        Returns the last N *completed* (user, assistant) turns.
+        Used for pronoun rewriting and can be reused elsewhere safely.
+        Ensures slicing works even if underlying memory is a deque.
+        """
+
+        pairs = self.chat_memory.get(user_id, [])
+
+        # Convert deque → list for safe slicing
+        if not isinstance(pairs, list):
+            pairs = list(pairs)
+
+        # Filter OUT incomplete turns: (question, None)
+        completed_pairs = [(u, a) for u, a in pairs if a]
+
+        if not completed_pairs:
+            return ""
+
+        # Get last N completed turns
+        last_pairs = completed_pairs[-turns:]
+
+        # Format as history text
+        history_text = "\n".join(
+            f"Human: {u}\nAI: {a}" for u, a in last_pairs
+        )
+
+        return history_text.strip()
+    
+    def get_history_for_injection(self, user_id: str, turns: int = 1) -> str:
+        # Get in-memory history
+        pairs = self.chat_memory.get(user_id, [])
+
+        # Convert deque → list
+        if not isinstance(pairs, list):
+            pairs = list(pairs)
+
+        # No history → return empty
+        if not pairs:
+            return ""
+
+        # Extract last N turns safely
+        last_pairs = pairs[-turns:]
+
+        # Format
+        history_text = "\n".join(
+            f"Human: {u}\nAI: {a if a is not None else ''}"
+            for u, a in last_pairs
+        )
+
+        return history_text.strip()
+
     # Step 3️⃣ — Inject history before prompt
     def inject_history(self, inputs: dict) -> dict:
         """
@@ -539,23 +641,20 @@ class ThinkpalmRAG:
 
         # 🧩 Resolve user_id safely
         uid = inputs.get("user_id")
+        rewritten_question = inputs["question"]   # now gets rewritten version 🎉
+
         if isinstance(uid, dict):
             uid = uid.get("user_id") or str(uid)
         if not isinstance(uid, str):
             uid = str(uid)
 
         # 🧠 Retrieve full chat history (hybrid: memory + Cosmos) for every question
-        history = self.get_chat_history_text(uid)
+        history = self.get_history_for_injection(uid, self.history_limit)
 
         # 📄 Handle Document objects or dict fallback
         context_docs = inputs.get("context", [])
         
-        # --- ✂️ CLEANUP PERFORMED HERE DURING STRING JOINING ---
-        
-        
-        # This line iterates, cleans the content, and extracts it for formatting
-
-    
+        # iterates, cleans the content, and extracts it for formatting
         formatted_context = "\n\n".join([
             self.clean_content(d)  # <-- CALL USING self. AND PASS THE WHOLE OBJECT 'd'
             # The clean_content method handles accessing d.page_content internally
@@ -568,89 +667,12 @@ class ThinkpalmRAG:
 
         return {
             "context": formatted_context,
-            "question": inputs.get("question", ""),
+            "question": rewritten_question,
             "history": history,
             "user_id": uid
         }
 
 
-    def get_chat_history_text(self, user_id: str) -> str:
-        """
-        Retrieve and format chat history for the given user, ensuring chronological order.
-        Prefer in-memory (session) chat_memory; fallback to Cosmos DB.
-        Returns formatted conversation string (e.g., 'Human: msg\nAI: msg').
-        """
-        
-        # 1. 💾 Try In-Memory Cache (Should already be correctly structured)
-        memory_pairs = self.chat_memory.get(user_id, [])
-        
-        # Ensure memory_pairs is a list of (user_msg, assistant_msg) tuples/lists
-        if not isinstance(memory_pairs, list):
-            memory_pairs = []
-
-        # 2. 🧩 Fallback to Cosmos DB if cache is empty
-        if not memory_pairs:
-            try:
-                # Query the *latest* items first (DESC) for best performance, then reverse later
-                # We fetch up to history_limit * 2 to ensure we have full pairs, just in case.
-                query = f"""
-                SELECT TOP {self.history_limit * 2} * FROM c 
-                WHERE c.user_id = '{user_id}'
-                ORDER BY c.timestamp DESC
-                """
-                
-                # Note: Assuming self.history_container handles the query correctly (FakeCosmos or real)
-                items = list(self.history_container.query_items(
-                    query=query,
-                    enable_cross_partition_query=True
-                ))
-
-                # 🚨 FIX: Sort/Reverse to ensure chronological order (Oldest -> Newest)
-                # Since we queried DESC, the newest is first. We need to reverse this.
-                # Using timestamp as the primary sort key is crucial for the FakeCosmos tests.
-                items.sort(key=lambda x: x.get("timestamp", ""), reverse=False)
-                
-                # Assuming Cosmos items are individual messages (role, content, timestamp)
-                # We need to re-pair them into turns.
-                temp_memory = []
-                user_msg = None
-                
-                for item in items:
-                    content = item.get("content", "")
-                    role = item.get("role", "")
-                    
-                    if role == "user":
-                        user_msg = content
-                    elif role == "assistant" and user_msg is not None:
-                        # Found a complete (user, assistant) pair
-                        temp_memory.append((user_msg, content))
-                        user_msg = None # Reset for the next turn
-
-                memory_pairs = temp_memory
-                
-                # Store the chronologically ordered pairs back into the in-memory cache
-                self.chat_memory[user_id] = memory_pairs
-                print(f"✅ Loaded {len(memory_pairs)} past turns from Cosmos for {user_id}")
-                
-            except Exception as e:
-                # Important to catch exceptions in the DB layer
-                print(f"⚠️ Cosmos Error retrieving history for {user_id}: {e}")
-                return ""
-
-        else:
-            print(f"💾 Loaded {len(memory_pairs)} turns from in-memory cache for {user_id}")
-
-        # 3. ✂️ Limit and Format the History
-        
-        # We now have chronologically ordered pairs. Limit to the latest N pairs.
-        limited_pairs = memory_pairs[-self.history_limit:] 
-        
-        # 🚨 FIX: Standardize the output format for the LLM prompt.
-        history_text = "\n".join([
-            f"Human: {u}\nAI: {a}" for u, a in limited_pairs
-        ])
-        
-        return history_text.strip()
 
     def _add_retrieval_hints(self, text: str) -> str:
         """
@@ -751,58 +773,58 @@ class ThinkpalmRAG:
             text += "\n\nHINTS: " + "; ".join(hints)
 
         return text
-    def rewrite_question(self, inputs):
-        # ⚡️ Pronoun / vague reference detector
-        PRONOUN_PATTERN = re.compile(
-            r"\b(it|this|that|they|them|those|there|these|he|she|his|her|their|mentioned|above|same)\b",
-            re.IGNORECASE
-        )
-        user_id = inputs["user_id"]
-        question = inputs["question"].strip()
-        history_text = self.get_chat_history_text(user_id)
+#     def rewrite_question(self, inputs):
+#         # ⚡️ Pronoun / vague reference detector
+#         PRONOUN_PATTERN = re.compile(
+#             r"\b(it|this|that|they|them|those|there|these|he|she|his|her|their|mentioned|above|same)\b",
+#             re.IGNORECASE
+#         )
+#         user_id = inputs["user_id"]
+#         question = inputs["question"].strip()
+#         history_text = self.get_chat_history_text(user_id)
 
-        # 🧩 If no prior history, skip rewriting
-        if not history_text:
-            return {"user_id": user_id, "question": question}
+#         # 🧩 If no prior history, skip rewriting
+#         if not history_text:
+#             return {"user_id": user_id, "question": question}
 
-        # 🧠 If pronoun detected → use LLM to clarify
-        if PRONOUN_PATTERN.search(question):
-            reformulation_prompt = f"""
-You are a helpful assistant. Rewrite the latest user question so it becomes 
-self-contained and unambiguous, based on the conversation history.
+#         # 🧠 If pronoun detected → use LLM to clarify
+#         if PRONOUN_PATTERN.search(question):
+#             reformulation_prompt = f"""
+# You are a helpful assistant. Rewrite the latest user question so it becomes 
+# self-contained and unambiguous, based on the conversation history.
 
-REWRITE RULES:
-- Remove ALL pronouns (it, this, that, they, them, etc.).
-- EXCEPTION: The acronym “IT” referring to Information Technology **must be uppercase**.
-- Never output “it” in lowercase unless it is part of another word 
-  (e.g., "acquisition", "notification").
-- If the context refers to “IT assets”, rewrite it EXACTLY as “IT assets”.
-- NEVER output the phrase “it asset acquisition” — convert it to “IT asset acquisition”.
+# REWRITE RULES:
+# - Remove ALL pronouns (it, this, that, they, them, etc.).
+# - EXCEPTION: The acronym “IT” referring to Information Technology **must be uppercase**.
+# - Never output “it” in lowercase unless it is part of another word 
+#   (e.g., "acquisition", "notification").
+# - If the context refers to “IT assets”, rewrite it EXACTLY as “IT assets”.
+# - NEVER output the phrase “it asset acquisition” — convert it to “IT asset acquisition”.
 
-Conversation History:
-{history_text}
+# Conversation History:
+# {history_text}
 
-Latest User Question: {question}
+# Latest User Question: {question}
 
-Rewritten question:
-"""
-            rewritten = self.llm.invoke(reformulation_prompt).content.strip()
-            print(f"🔁 Rewritten question: {rewritten}")
-            self._last_rewritten = {
-            "question": rewritten,
-            "original": question,
-            "history_used": history_text
-        }
+# Rewritten question:
+# """
+#             rewritten = self.llm.invoke(reformulation_prompt).content.strip()
+#             print(f"🔁 Rewritten question: {rewritten}")
+#             self._last_rewritten = {
+#             "question": rewritten,
+#             "original": question,
+#             "history_used": history_text
+#         }
             
-            return {"user_id": user_id, "question": rewritten}
+#             return {"user_id": user_id, "question": rewritten}
 
-        # 🚀 No pronouns → no rewrite
-        self._last_rewritten = {
-        "question": question,
-        "original": question,
-        "history_used": history_text
-    }
-        return {"user_id": user_id, "question": question}
+#         # 🚀 No pronouns → no rewrite
+#         self._last_rewritten = {
+#         "question": question,
+#         "original": question,
+#         "history_used": history_text
+#     }
+#         return {"user_id": user_id, "question": question}
     # ------------------------------------------------------------
     # VECTOR SEARCH ON COSMOS
     # ------------------------------------------------------------
@@ -1216,56 +1238,77 @@ Rewritten question:
         """Create the retrieval + generation chain with selective memory-based rewriting."""
         
 
-        # ⚡️ Pronoun / vague reference detector
         PRONOUN_PATTERN = re.compile(
-            r"\b(it|this|that|they|them|those|there|these|he|she|his|her|their|mentioned|above|same)\b",
+            r"\b("
+            r"it|its|it's|it’s|"         # it → possessive + contractions
+            r"this|that|these|those|"    # demonstratives
+            r"they|them|their|theirs|they're|theyre|"  # plurals + possessive
+            r"he|his|him|"               # male
+            r"she|her|hers|"             # female
+            r"there|here|"               # vague locatives
+            r"mentioned|above|same"      # generic vague referents
+            r")\b",
             re.IGNORECASE
         )
 
         def rewrite_question(inputs):
             user_id = inputs["user_id"]
             question = inputs["question"].strip()
-            history_text = self.get_chat_history_text(user_id)
+            history_text = self.get_history_for_rewrite(user_id, turns=1)
 
             # 🧩 If no prior history, skip rewriting
             if not history_text:
+                self._last_rewritten = {
+                    "rewritten": None,
+                    "original": question,
+                    "history_used": None
+                }
                 return {"user_id": user_id, "question": question}
 
             # 🧠 If pronoun detected → use LLM to clarify
             if PRONOUN_PATTERN.search(question):
                 reformulation_prompt = f"""
-                You are a helpful assistant. Based on the conversation below,
-                rewrite the latest user question so that it is self-contained and unambiguous.
+                You are a helpful assistant. Rewrite the latest user question so it becomes 
+                self-contained and unambiguous, based on the conversation history.
+
+                REWRITE RULES:
+                - Remove ALL pronouns (it, this, that, they, them, etc.).
+                - EXCEPTION: The acronym “IT” referring to Information Technology **must be uppercase**.
+                - Never output “it” in lowercase unless it is part of another word 
+                (e.g., "acquisition", "notification").
+                - If the context refers to “IT assets”, rewrite it EXACTLY as “IT assets”.
+                - NEVER output the phrase “it asset acquisition” — convert it to “IT asset acquisition”.
 
                 Conversation History:
                 {history_text}
-
+                
                 Latest User Question: {question}
 
                 Rewritten question:
+
                 """
                 rewritten = self.llm.invoke(reformulation_prompt).content.strip()
                 print(f"🔁 Rewritten question: {rewritten}")
                 self._last_rewritten = {
-        "question": question,
-        "original": question,
-        "history_used": history_text
-    }
+                    "rewritten": rewritten,
+                    "original": question,
+                    "history_used": history_text
+                }
                 return {"user_id": user_id, "question": rewritten}
 
             # 🚀 No pronouns → no rewrite
             self._last_rewritten = {
-        "question": question,
-        "original": question,
-        "history_used": history_text
-    }
+                "rewritten": None,
+                "original": question,
+                "history_used": history_text
+            }
             return {"user_id": user_id, "question": question}
 
 
         # Step 2️⃣ — Retrieval runnable (uses rewritten question)
         def retrieve_with_rewrite(inputs):
             """Rewrite the question, then search Cosmos with rewritten text."""
-            rewritten = self.rewrite_question(inputs)
+            rewritten = rewrite_question(inputs)
             
             # 🧠 Enrich the question with retrieval hints
             hinted_query = self._add_retrieval_hints(rewritten["question"])
@@ -1307,12 +1350,12 @@ Rewritten question:
         
         # Step 4️⃣ — Full chain
         return (
-            RunnableLambda(retrieve_with_rewrite)
-            |  RunnableLambda(lambda inputs: self.inject_history(inputs))
-            | prompt
-            | self.llm
-            | StrOutputParser()
-        )
+        RunnableLambda(retrieve_with_rewrite)
+        | RunnableLambda(self.inject_history)
+        | prompt
+        | self.llm
+        | StrOutputParser()
+    )
 
     # ------------------------------------------------------------
     # ASK (MAIN ENTRYPOINT)
@@ -1335,9 +1378,10 @@ Rewritten question:
             f.write(f"\n\n==============================\n")
 
         
-        self.update_chat_memory(user_id, question, response)
-        
-        return response, docs
+        # self.update_chat_memory(user_id, question, response)
+        rewritten_q = getattr(self, "_last_rewritten", {}).get("rewritten", question) or question
+
+        return response, docs, rewritten_q
     
 
 
@@ -1347,25 +1391,32 @@ class RetrieverNode(BaseNode):
         self.rag_bot = ThinkpalmRAG()
         
     def execute(self, state: "ChatState") -> "ChatState":
-        # --- Run RAG ---
-        initial_answer, retrieved_docs = self.rag_bot.ask(
-            state.user_id,
-            state.question
-        )
+        user_id = state.user_id
+        user_question = state.question
 
-        # --- Save memory (uses dict-like input, so convert state to dict) ---
+        # Ensure memory container exists
+        if user_id not in self.rag_bot.chat_memory:
+            self.rag_bot.chat_memory[user_id] = deque(maxlen=self.rag_bot.history_limit)
+
+        # 1️⃣ Insert placeholder BEFORE RAG retrieval
+        # (So rewrite can see user's most recent question)
+        # 2️⃣ Run RAG
+        self.rag_bot.chat_memory[user_id].append((user_question, None))
+        answer, retrieved_docs, rewritten_q = self.rag_bot.ask(user_id, user_question)
+        
+        # 4️⃣ Save memory to autosync logic
         updated_memory = self.rag_bot.save_to_memory(
             state.chat_memory,
-            state.user_id,
-            state.question,
-            initial_answer
+            user_id,
+            rewritten_q,
+            answer
         )
 
-        # --- Return updated state (immutably) ---
+        # 5️⃣ Return new state
         return state.model_copy(update={
-            "initial_answer": initial_answer,
+            "initial_answer": answer,
             "retrieved_docs": retrieved_docs,
-            "chat_memory": updated_memory                     # ⭐ MUST ADD THIS
+            "chat_memory": updated_memory
         })
 
     
