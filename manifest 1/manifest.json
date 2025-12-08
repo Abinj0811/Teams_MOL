@@ -1,0 +1,59 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "8c86557b-d1c3-4c0b-8270-a5d4208c1e20",
+  "packageName": "com.thinkpalm.mol_teamschatbot",
+  "developer": {
+    "name": "ThinkPalm Technologies",
+    "websiteUrl": "https://www.thinkpalm.com",
+    "privacyUrl": "https://www.thinkpalm.com/privacy-policy",
+    "termsOfUseUrl": "https://www.thinkpalm.com/terms-of-use"
+  },
+  "name": {
+    "short": "MOLCT",
+    "full": "MOL ChatBot Assistant"
+  },
+  "description": {
+    "short": "A chatbot integrated with Microsoft Teams for internal communication.",
+    "full": "MOL Teams ChatBot enables seamless communication within Teams, allowing employees to interact with the bot for information, support, and workflow automation."
+  },
+  "icons": {
+    "outline": "outline.png",
+    "color": "color.png"
+  },
+  "accentColor": "#6264A7",
+  "bots": [
+    {
+      "botId": "981b6d34-f5c7-40c0-a31d-7aadd7307e89",
+      "scopes": ["personal", "team", "groupchat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "commandLists": [
+        {
+          "scopes": ["personal", "team", "groupchat"],
+          "commands": [
+            {
+              "title": "help",
+              "description": "Get a list of available commands."
+            },
+            {
+              "title": "about",
+              "description": "Learn more about this chatbot."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": [
+    "thinkpalm.com",
+    "molteamschatbot.azurewebsites.net",
+    "token.botframework.com"
+  ],
+  "webApplicationInfo": {
+    "id": "f9ce30b8-2e02-40b5-8b84-82afcde1a693",
+    "resource": "https://api.botframework.com"
+  }
+}
