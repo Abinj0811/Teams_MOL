@@ -1,0 +1,10 @@
+langchain-community            0.4.1
+langchain-core                 1.1.0
+langchain-openai
+langgraph
+python-dotenv                  1.2.1
+PyYAML                         6.0.3
+regex                          2025.11.3
+numpy
+beautifulsoup4
+scikit-learn                   1.7.2

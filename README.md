@@ -17,3 +17,18 @@ This repo hosts a Teams-ready RAG chatbot. The active code lives in `ChatBot/`; 
 2) Install deps: `pip install -r requirements.txt` and `pip install aiohttp botbuilder-core botbuilder-integration-aiohttp`
 3) Set bot creds if needed: `export MicrosoftAppId=... MicrosoftAppPassword=...`
 4) Run the bot: `cd ChatBot && python app.py` (defaults to port 3979)
+
+## Work done 
+1. Converted all modules to lanngraph 
+2. App in Teams can be up by 
+    a) Run python app.py
+    b) Up ngrok server ( $http ngrok port_no) where port no is specified in app.py
+    c) deploy manifest.yaml in Teams 
+        update manifest.yaml : application id 
+        zip the folder 
+        upload in Teams
+3. Tested all questions using "docs/InquiryList_MOLCT-GPM R2 - Testing by Babu 1.ods"
+4. Added shipping glossery and full forms 
+5. Added footer notes (in answer node). While formatting the answer is changing that needs a fix 
+
+``Note : Add app configurations in config.py``
